@@ -1,7 +1,6 @@
 const fetch = require('node-fetch');
 const pino = require('pino');
 
-// Configure the logger (pino)
 const logger = pino({
     level: process.env.LOG_LEVEL || 'info',
     formatters: {
@@ -30,20 +29,20 @@ const DEFAULT_HEADERS = {
 // Function to fetch lottery data from the API
 async function getLotteryDataFromApi(drawId, requestId) {
     const url = `${API_BASE_URL}?idsorteo=${drawId}`;
-    logger.debug({ requestId, drawId }, `Requesting data from API for drawId: ${drawId}`);
 
     try {
+        logger.info({ requestId, drawId }, `Requesting data from API for drawId: ${drawId}`);
         const response = await fetch(url, { headers: DEFAULT_HEADERS });
-
-        logger.debug({ requestId, drawId, responseHeaders: JSON.stringify(response.headers) }, `Response headers for drawId: ${drawId}`);
 
         if (!response.ok) {
             const text = await response.text();
             const truncatedText = text.substring(0, 200);
-            logger.error({ requestId, drawId, responseStatus: response.status, responseText: truncatedText }, `API returned an error for drawId: ${drawId}`);
+            logger.warn({ requestId, drawId, responseStatus: response.status, responseText: truncatedText }, `API returned an error for drawId: ${drawId}`);
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
+        const responseBody = await response.text();
+        logger.debug({ requestId, drawId, responseHeaders: JSON.stringify(response.headers), responseBodyTruncated: responseBody.substring(0, 200) }, `Response headers and truncated body for drawId: ${drawId}`);
         return await response.json();
     } catch (error) {
         logger.error({

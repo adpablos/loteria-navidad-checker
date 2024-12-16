@@ -56,7 +56,7 @@ app.get('/api/lottery', async (req, res) => {
 
     // Validate the drawId
     if (!isValidDrawId(drawId)) {
-        logger.warn({ requestId, clientIp }, `Invalid drawId: ${drawId}`);
+        logger.warn({ requestId, clientIp, drawId }, `Invalid drawId: ${drawId}`);
         return res.status(400).json({ error: 'Invalid drawId. It must be a 10-digit number.' });
     }
 
@@ -79,10 +79,10 @@ app.get('/api/lottery', async (req, res) => {
 });
 
 // Endpoint to clear the cache
-app.get('/api/lottery/clearcache', (req, res) => {
+app.get('/api/lottery/clearcache', async (req, res) => {
     const requestId = req.requestId;
     logger.info({ requestId }, `Clearing cache`);
-    clearCache();
+    clearCache(requestId);
     res.json({ message: 'Cache cleared' });
 });
 
