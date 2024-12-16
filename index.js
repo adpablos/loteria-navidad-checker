@@ -1,14 +1,26 @@
 const express = require('express');
 const fetch = require('node-fetch');
+const pino = require('pino'); 
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+const logger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+  formatters: {
+    level: (label) => {
+      return { level: label }; 
+    },
+  },
+});
 
 app.use(express.json());
 
 app.get('/api/lottery', async (req, res) => {
   const drawId = req.query.drawId || '1259409102'; // 2024 Christmas Lottery ID as default
   const url = `https://www.loteriasyapuestas.es/servicios/premioDecimoWeb?idsorteo=${drawId}`;
+
+  logger.debug(`Requesting data for drawId: ${drawId}`);
 
   try {
     const response = await fetch(url, {
@@ -27,35 +39,36 @@ app.get('/api/lottery', async (req, res) => {
       }
     });
 
-    console.log(`Response status: ${response.status}`);
-    console.log(`Response headers: ${JSON.stringify(response.headers)}`);
-
-    const text = await response.text();
-    console.log(`Response body: ${text}`);
+    logger.debug(`Response status: ${response.status}`);
+    logger.debug(`Response headers: ${JSON.stringify(response.headers)}`);
 
     if (!response.ok) {
+      const text = await response.text();
+      logger.error(`HTTP error! status: ${response.status}, text: ${text.substring(0, 200)}...`); 
       return res.status(response.status).json({ error: `HTTP error! status: ${response.status}` });
     }
 
-    const data = JSON.parse(text); // Try to parse the response as JSON
+    const data = await response.json();
     res.json(data);
 
   } catch (error) {
-    console.error("Error object:", error);
-    if (error.response) {
-      console.error("Response status:", error.response.status);
-      console.error("Response headers:", error.response.headers);
-      try {
-        const text = await error.response.text();
-        console.error("Response body:", text);
-      } catch (e) {
-        console.error("Error getting response body:", e);
+    logger.error({
+      message: 'Error retrieving lottery data',
+      error: {
+        message: error.message,
+        stack: error.stack,
+        response: error.response ? {
+          status: error.response.status,
+          headers: error.response.headers,
+          body: error.response.text ? (await error.response.text()).substring(0, 200) + '...' : ''
+        } : null
       }
-    }
+    });
+
     res.status(500).json({ error: 'Error retrieving lottery data' });
   }
 });
 
 app.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
+  logger.info(`Server listening on port ${port}`);
 });
