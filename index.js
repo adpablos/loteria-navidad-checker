@@ -27,17 +27,31 @@ app.get('/api/lottery', async (req, res) => {
       }
     });
 
-    // Check for HTTP error status
+    console.log(`Response status: ${response.status}`);
+    console.log(`Response headers: ${JSON.stringify(response.headers)}`);
+
+    const text = await response.text();
+    console.log(`Response body: ${text}`);
+
     if (!response.ok) {
-      const text = await response.text(); // Try to get the text response in case of error
-      console.error(`HTTP error! status: ${response.status}, text: ${text}`);
       return res.status(response.status).json({ error: `HTTP error! status: ${response.status}` });
     }
 
-    const data = await response.json();
+    const data = JSON.parse(text); // Try to parse the response as JSON
     res.json(data);
+
   } catch (error) {
-    console.error(error);
+    console.error("Error object:", error);
+    if (error.response) {
+      console.error("Response status:", error.response.status);
+      console.error("Response headers:", error.response.headers);
+      try {
+        const text = await error.response.text();
+        console.error("Response body:", text);
+      } catch (e) {
+        console.error("Error getting response body:", e);
+      }
+    }
     res.status(500).json({ error: 'Error retrieving lottery data' });
   }
 });
