@@ -27,26 +27,27 @@ const DEFAULT_HEADERS = {
 };
 
 // Function to fetch lottery data from the API
-async function getLotteryDataFromApi(drawId) {
+async function getLotteryDataFromApi(drawId, requestId) {
   const url = `${API_BASE_URL}?idsorteo=${drawId}`;
-  logger.info(`Requesting data from API for drawId: ${drawId}`);
+  logger.info({ requestId, drawId }, `Requesting data from API for drawId: ${drawId}`);
 
   try {
     const response = await fetch(url, { headers: DEFAULT_HEADERS });
 
-    logger.debug(`Response status: ${response.status}`);
-    logger.debug(`Response headers: ${JSON.stringify(response.headers)}`);
+    logger.debug({ requestId, drawId, responseHeaders: JSON.stringify(response.headers) }, `Response headers for drawId: ${drawId}`);
 
     if (!response.ok) {
       const text = await response.text();
       const truncatedText = text.substring(0, 200);
-      logger.error(`HTTP error! status: ${response.status}, text: ${truncatedText}...`);
+      logger.warn({ requestId, drawId, responseStatus: response.status, responseText: truncatedText }, `API returned an error for drawId: ${drawId}`);
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     return await response.json();
   } catch (error) {
     logger.error({
+      requestId,
+      drawId,
       message: 'Error retrieving lottery data',
       error: {
         message: error.message,
@@ -61,7 +62,7 @@ async function getLotteryDataFromApi(drawId) {
             }
           : null,
       },
-    });
+    }, `Error retrieving lottery data for drawId: ${drawId}`);
 
     if (error.type === 'invalid-json') {
       throw new Error('Invalid JSON response from API');

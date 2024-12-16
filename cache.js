@@ -14,15 +14,16 @@ const cache = {};
 const DEFAULT_CACHE_TTL = process.env.CACHE_TTL || 1800; // 30 minutes (1800 seconds)
 
 // Function to get data from cache or API
-async function getLotteryDataWithCache(drawId, fetchDataFromApi) {
+async function getLotteryDataWithCache(drawId, fetchDataFromApi, requestId) {
     const cachedResponse = cache[drawId];
     if (cachedResponse && (Date.now() - cachedResponse.timestamp < cachedResponse.ttl * 1000)) {
-        logger.info(`Returning cached response for drawId: ${drawId}`);
+        const remainingTTL = Math.round((cachedResponse.ttl * 1000 - (Date.now() - cachedResponse.timestamp)) / 1000);
+        logger.info({ requestId, drawId, cacheTTLRemaining: remainingTTL }, `Returning cached response for drawId: ${drawId}`);
         return cachedResponse.data;
     }
 
-    logger.info(`Fetching data from API for drawId: ${drawId}`);
-    const data = await fetchDataFromApi(drawId);
+    logger.info({ requestId, drawId }, `Fetching data from API for drawId: ${drawId}`);
+    const data = await fetchDataFromApi(drawId, requestId);
 
     // Save data to cache
     cache[drawId] = {
