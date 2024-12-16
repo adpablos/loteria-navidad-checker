@@ -7,9 +7,6 @@ const { getLotteryDataWithCache, clearCache } = require('./cache');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Trust the X-Forwarded-For header from the first proxy
-app.set('trust proxy', true);
-
 // Configure the logger (pino)
 const logger = pino({
   level: process.env.LOG_LEVEL || 'info',
@@ -27,6 +24,7 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req, res) => req.headers['x-real-ip'] || req.ip, // Use x-real-ip header or connection IP
 });
 
 // Apply the rate limiter to all requests
