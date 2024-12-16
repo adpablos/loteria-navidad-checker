@@ -31,7 +31,7 @@ async function getLotteryDataFromApi(drawId, requestId) {
     const url = `${API_BASE_URL}?idsorteo=${drawId}`;
 
     try {
-        logger.info({ requestId, drawId }, `Requesting data from API for drawId: ${drawId}`);
+        logger.debug({ requestId, drawId }, `Requesting data from API for drawId: ${drawId}`);
         const response = await fetch(url, { headers: DEFAULT_HEADERS });
 
         if (!response.ok) {
@@ -41,9 +41,17 @@ async function getLotteryDataFromApi(drawId, requestId) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const responseBody = await response.text();
-        logger.debug({ requestId, drawId, responseHeaders: JSON.stringify(response.headers), responseBodyTruncated: responseBody.substring(0, 200) }, `Response headers and truncated body for drawId: ${drawId}`);
-        return await response.json();
+        // Read the body once and store it in a variable
+        const responseText = await response.text();
+
+        // Log response headers and truncated body if debug level is enabled
+        logger.debug({ requestId, drawId, responseHeaders: JSON.stringify(response.headers), responseBodyTruncated: responseText.substring(0, 200) }, `Response headers and truncated body for drawId: ${drawId}`);
+
+        // Parse the response as JSON
+        const data = JSON.parse(responseText);
+        
+        return data;
+
     } catch (error) {
         logger.error({
             requestId,
