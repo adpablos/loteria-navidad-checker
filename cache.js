@@ -1,5 +1,6 @@
 const pino = require('pino');
 
+// Configure the logger (pino)
 const logger = pino({
     level: process.env.LOG_LEVEL || 'info',
     formatters: {
@@ -22,7 +23,7 @@ async function getLotteryDataWithCache(drawId, fetchDataFromApi, requestId) {
         return cachedResponse.data;
     }
 
-    logger.info({ requestId, drawId }, `Fetching data from API for drawId: ${drawId}`);
+    logger.debug({ requestId, drawId }, `Fetching data from API for drawId: ${drawId}`);
     const data = await fetchDataFromApi(drawId, requestId);
 
     // Save data to cache

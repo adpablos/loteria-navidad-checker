@@ -50,22 +50,25 @@ function isValidDrawId(drawId) {
 
 // Endpoint to get lottery data
 app.get('/api/lottery', async (req, res) => {
+    const requestId = req.requestId;
+    const clientIp = req.headers['x-real-ip'] || req.ip;
     const drawId = req.query.drawId || process.env.DEFAULT_DRAW_ID || '1259409102';
 
     // Validate the drawId
     if (!isValidDrawId(drawId)) {
-        logger.warn({ requestId: req.requestId, clientIp: req.headers['x-real-ip'] || req.ip }, `Invalid drawId: ${drawId}`);
+        logger.warn({ requestId, clientIp }, `Invalid drawId: ${drawId}`);
         return res.status(400).json({ error: 'Invalid drawId. It must be a 10-digit number.' });
     }
 
-    logger.info({ requestId: req.requestId, clientIp: req.headers['x-real-ip'] || req.ip, drawId }, `Received request for drawId: ${drawId}`);
+    logger.info({ requestId, clientIp, drawId }, `Received request for drawId: ${drawId}`);
 
     try {
-        const data = await getLotteryDataWithCache(drawId, getLotteryDataFromApi, req.requestId);
+        const data = await getLotteryDataWithCache(drawId, getLotteryDataFromApi, requestId);
         if (data) {
-          res.json(data);
+            res.json(data);
         }
     } catch (error) {
+        logger.error({ requestId, clientIp, drawId, error: error.message, stack: error.stack }, `Error processing request for drawId: ${drawId}`);
         if (error.message === 'Invalid JSON response from API') {
             return res.status(502).json({ error: error.message });
         } else if (error.message.startsWith('HTTP error!')) {
@@ -77,7 +80,8 @@ app.get('/api/lottery', async (req, res) => {
 
 // Endpoint to clear the cache
 app.get('/api/lottery/clearcache', (req, res) => {
-    logger.info({ requestId: req.requestId }, `Clearing cache`);
+    const requestId = req.requestId;
+    logger.info({ requestId }, `Clearing cache`);
     clearCache();
     res.json({ message: 'Cache cleared' });
 });
