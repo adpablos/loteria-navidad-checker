@@ -1,0 +1,645 @@
+diff --git a/Code.gs b/Code.gs
+index 068bec9..a190a10 100644
+--- a/Code.gs
++++ b/Code.gs
+@@ -1,159 +1,224 @@
++/**
++ * Constants for spreadsheet and sheet names
++ */
+ const SS_ID = "1cfpTYarDEG4ZgK8gWmQVo45H1jpVbDyOowPDco8tB-k";
+-const AWARDS_ROW_START = 4; // Starting row for ticket results
+ const SHEET_NAME = new Date().getFullYear().toString();
+-const DRAW_ID = "1259409102"; // ID of the Christmas Lottery Draw 2024
+-const RAILWAY_PROXY_URL = "YOUR_RAILWAY_APP_URL"; // Replace with your Railway app URL
+ 
+-// --- Core Functionality ---
++/**
++ * Constants for column indexes
++ */
++const COLUMNS = {
++    NUMBER: 0,        // A: Número
++    SHARES: 1,        // B: Decimos
++    BUYER: 2,         // C: Quien
++    RECIPIENT: 3,     // D: Para
++    AWARD_PER_SHARE: 4, // E: Premio/decimo
++    BETWEEN: 5,       // F: Entre
++    AWARD: 6,         // G: Premio
++    NOTIFIED: 7,      // H: Notificado
++    SIMULATE: 8       // I: Simular
++};
++
++/**
++ * Constants for API
++ */
++const API = {
++    BASE_URL: "loteria-navidad-checker-production.up.railway.app",
++    ENDPOINTS: {
++        TICKET: "/api/lottery/ticket",
++        RESULTS: "/api/lottery/results"
++    }
++};
++
++/**
++ * Constants for the lottery draw
++ */
++const DRAW_CONFIG = {
++    ID: "1259409102",
++    AWARDS_START_ROW: 10,
++    MAIN_AWARDS_START_ROW: 18,
++    MAIN_AWARDS_COUNT: 13
++};
++
++/**
++ * Gets the current spreadsheet
++ */
+ function getSpreadsheet() {
+-  return SpreadsheetApp.openById(SS_ID).getSheetByName(SHEET_NAME);
+-}
+-
+-function getLotteryData() {
+-  const url = `${RAILWAY_PROXY_URL}/api/lottery?drawId=${DRAW_ID}`; // Using our proxy URL in Railway
+-  try {
+-    const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+-    const json = response.getContentText();
+-    Logger.log(`API Response: ${json}`);
+-    return JSON.parse(json);
+-  } catch (e) {
+-    Logger.log(`API Error: ${e.message}`);
+-    return {};
+-  }
++    return SpreadsheetApp.openById(SS_ID).getSheetByName(SHEET_NAME);
+ }
+ 
+-function getAward(number) {
+-  const data = getLotteryData();
+-  if (data && data.compruebe) {
+-    const award = data.compruebe.find(p => p.decimo === number);
+-    if (award) {
+-      Logger.log(`Number ${number}: Award = ${award.prize} €`);
+-      return award.prize;
++/**
++ * Builds API URLs
++ */
++const ApiUrlBuilder = {
++    getTicketUrl: (drawId) => 
++        `https://${API.BASE_URL}${API.ENDPOINTS.TICKET}?drawId=${drawId}`,
++    
++    getResultsUrl: (drawId) => 
++        `https://${API.BASE_URL}${API.ENDPOINTS.RESULTS}?drawId=${drawId}`
++};
++
++/**
++ * Gets lottery data from both endpoints
++ */
++async function getLotteryData() {
++    try {
++        const [ticketData, resultsData] = await Promise.all([
++            fetchApi(ApiUrlBuilder.getTicketUrl(DRAW_CONFIG.ID)),
++            fetchApi(ApiUrlBuilder.getResultsUrl(DRAW_CONFIG.ID))
++        ]);
++
++        return {
++            ticketData,
++            resultsData
++        };
++    } catch (error) {
++        console.error('Error fetching lottery data:', error);
++        return null;
+     }
+-  }
+-  Logger.log(`Number ${number}: No award found.`);
+-  return 0;
+ }
+ 
+-// --- Sheet Interaction ---
+-function getColumn(columnName) {
+-  const sheet = getSpreadsheet();
+-  const headers = sheet.getRange("A1:Z1").getValues()[0];
+-  Logger.log(`Headers detected: ${headers.join(", ")}`);
++/**
++ * Generic API fetch function with error handling
++ */
++async function fetchApi(url) {
++    try {
++        const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
++        const statusCode = response.getResponseCode();
+ 
+-  const colIndex = headers.indexOf(columnName);
+-  if (colIndex === -1) {
+-    throw new Error(`Column "${columnName}" not found in headers: ${headers.join(", ")}`);
+-  }
++        if (statusCode !== 200) {
++            throw new Error(`API request failed with status code: ${statusCode}`);
++        }
+ 
+-  return sheet.getRange(AWARDS_ROW_START, colIndex + 1, sheet.getLastRow() - AWARDS_ROW_START + 1)
+-    .getValues()
+-    .flat();
++        return JSON.parse(response.getContentText());
++    } catch (error) {
++        console.error(`API Error: ${error.message}`);
++        throw error;
++    }
+ }
+ 
+-function updateResults() {
+-  try {
++/**
++ * Updates the main awards table using the results endpoint
++ */
++function updateMainAwards(resultsData) {
++    if (!resultsData) return;
++
+     const sheet = getSpreadsheet();
+-    const numbers = getColumn("Número");
+-    const shares = getColumn("decimos");
+-    Logger.log(`Numbers fetched: ${numbers.join(", ")}`);
+-
+-    numbers.forEach((num, i) => {
+-      const award = getAward(num);
+-      const row = AWARDS_ROW_START + i;
+-      sheet.getRange(row, 7).setValue(award); // Col G: Premio/decimo
+-      sheet.getRange(row, 8).setValue(award * shares[i]); // Col H: Premio
++    const awards = [
++        { name: "Gordo", prize: resultsData.primerPremio },
++        { name: "Segundo", prize: resultsData.segundoPremio },
++        { name: "Tercer", prize: resultsData.tercerosPremios[0] },
++        { name: "Cuarto 1", prize: resultsData.cuartosPremios[0] },
++        { name: "Cuarto 2", prize: resultsData.cuartosPremios[1] },
++        ...resultsData.quintosPremios.map((prize, index) => 
++            ({ name: `Quinto ${index + 1}`, prize }))
++    ];
++
++    // Clear previous values
++    const clearRange = sheet.getRange(
++        DRAW_CONFIG.MAIN_AWARDS_START_ROW, 
++        1, 
++        DRAW_CONFIG.MAIN_AWARDS_COUNT, 
++        3
++    );
++    clearRange.clearContent();
++
++    // Update with new values
++    awards.forEach((award, index) => {
++        if (award.prize) {
++            const row = DRAW_CONFIG.MAIN_AWARDS_START_ROW + index;
++            sheet.getRange(row, 1).setValue(award.name);
++            sheet.getRange(row, 2).setValue(award.prize.decimo);
++            sheet.getRange(row, 3).setValue(award.prize.prize);
++        }
+     });
+-
+-    Logger.log("Results updated successfully.");
+-  } catch (e) {
+-    Logger.log(`Error in updateResults: ${e.message}`);
+-  }
+ }
+ 
+-function updateMainAwards() {
+-  try {
++/**
++ * Updates individual ticket results using the ticket endpoint
++ */
++function updateTicketResults(ticketData) {
+     const sheet = getSpreadsheet();
+-    const data = getLotteryData();
+-    if (data && data.compruebe) {
+-      const mainAwards = data.compruebe.slice(0, 13); // Get the top 13 awards
++    const numbersColumn = getColumn("Número");
++    const sharesColumn = getColumn("decimos");
++
++    if (!numbersColumn || !sharesColumn) return;
++
++    // Clear previous values
++    const lastRow = sheet.getLastRow();
++    const clearRange = sheet.getRange(
++        DRAW_CONFIG.AWARDS_START_ROW, 
++        COLUMNS.AWARD_PER_SHARE + 1, 
++        lastRow - DRAW_CONFIG.AWARDS_START_ROW + 1, 
++        2
++    );
++    clearRange.clearContent();
++
++    // Update ticket results
++    numbersColumn.forEach((num, i) => {
++        if (!num || typeof num !== 'number') return;
++
++        const row = DRAW_CONFIG.AWARDS_START_ROW + i;
++        const share = sharesColumn[i];
++        const award = findAward(ticketData, num.toString());
++
++        if (award) {
++            sheet.getRange(row, COLUMNS.AWARD_PER_SHARE + 1).setValue(award.prize);
++            sheet.getRange(row, COLUMNS.AWARD + 1).setValue(award.prize * share);
++        }
++    });
++}
+ 
+-      const awards = ["Gordo", "Segundo", "Tercer", "Cuarto 1", "Cuarto 2", "Quinto 1", "Quinto 2", "Quinto 3", "Quinto 4", "Quinto 5", "Quinto 6", "Quinto 7", "Quinto 8"];
++/**
++ * Updates the status message in the spreadsheet
++ */
++function updateStatus(success = true) {
++    const sheet = getSpreadsheet();
++    const timestamp = new Date().toLocaleString();
++    const message = success 
++        ? `Resultados actualizados - Última actualización: ${timestamp}`
++        : `Sorteo no disponible - Última actualización: ${timestamp}`;
++    
++    sheet.getRange("B5").setValue(message);
++}
+ 
+-      awards.forEach((award, index) => {
+-        if (mainAwards[index]) {
+-          sheet.getRange(13 + index, 6).setValue(mainAwards[index].decimo); // Col F: Numero
+-          sheet.getRange(13 + index, 7).setValue(mainAwards[index].prize.toLocaleString()); // Col G: Premio/decimo
++/**
++ * Main function to update all lottery information
++ */
++async function updateLotteryInformation() {
++    try {
++        const data = await getLotteryData();
++        
++        if (!data) {
++            updateStatus(false);
++            return;
+         }
+-      });
+ 
+-      Logger.log("Main awards updated successfully.");
+-    }
+-  } catch (e) {
+-    Logger.log(`Error in updateMainAwards: ${e.message}`);
+-  }
+-}
++        updateMainAwards(data.resultsData);
++        updateTicketResults(data.ticketData);
++        updateStatus(true);
+ 
+-// --- Notifications ---
+-function notifyIfWinner() {
+-  const sheet = getSpreadsheet();
+-  const numbers = getColumn("Número");
+-  const notified = getColumn("Notificado");
+-  const recipient = getColumn("Para");
+-  const buyer = getColumn("Quien");
+-  const share = getColumn("decimos");
+-
+-  numbers.forEach((num, i) => {
+-    const award = getAward(num);
+-    const row = AWARDS_ROW_START + i;
+-
+-    if (award > 0 && notified[i] !== "Yes") {
+-      const email = recipient[i] || buyer[i]; // Use "Para" if available, otherwise use "Quien"
+-      MailApp.sendEmail({
+-        to: email,
+-        subject: "¡Has ganado la Lotería de Navidad!",
+-        htmlBody: `<p>¡Enhorabuena! Tu número <b>${num}</b> ha sido premiado con <b>${award.toLocaleString()}€</b> por décimo.</p>
+-                   <p>Has jugado ${share[i]} decimo(s).</p>
+-                   <p>Premio total: <b>${(award * share[i]).toLocaleString()}€</b></p>`
+-      });
+-
+-      sheet.getRange(row, 9).setValue("Yes"); // Col I: Notificado
+-      Logger.log(`Notification sent for number ${num}, Award: ${award}€ to ${email}`);
++    } catch (error) {
++        console.error('Error updating lottery information:', error);
++        updateStatus(false);
+     }
+-  });
+ }
+ 
+-// --- Triggers and UI ---
++/**
++ * Trigger function when spreadsheet is opened
++ */
+ function onOpen() {
+-  const ui = SpreadsheetApp.getUi();
+-  ui.createMenu("Loteria")
+-    .addItem("Update Results", "updateResults")
+-    .addItem("Update Main Awards", "updateMainAwards")
+-    .addItem("Send Notifications", "notifyIfWinner")
+-    .addToUi();
+-}
+-
+-// --- Trigger ---
+-// (Optional) Function to create a time-driven trigger. Run this once to set up the trigger.
+-function createTrigger() {
+-  ScriptApp.newTrigger("updateResultsAndNotify")
+-    .timeBased()
+-    .onDay(22)
+-    .atHour(9)
+-    .everyHours(1)
+-    .create();
+-
+-  ScriptApp.newTrigger("updateMainAwards")
+-    .timeBased()
+-    .onDay(22)
+-    .atHour(9)
+-    .everyHours(1)
+-    .create();
++    updateLotteryInformation();
++    createMenu();
+ }
+ 
+-// (Optional) Function to run both updateResults and notifyIfWinner. Triggered by the time-driven trigger.
+-function updateResultsAndNotify() {
+-  updateResults();
+-  updateMainAwards();
+-  notifyIfWinner();
++/**
++ * Creates the menu in the spreadsheet
++ */
++function createMenu() {
++    const ui = SpreadsheetApp.getUi();
++    ui.createMenu("Loteria")
++        .addItem("Update Results", "updateLotteryInformation")
++        .addItem("Send Notifications", "notifyIfWinner")
++        .addToUi();
+ }
+\ No newline at end of file
+diff --git a/index.js b/index.js
+index 63b8eea..2d5e5e8 100644
+--- a/index.js
++++ b/index.js
+@@ -1,34 +1,35 @@
+-const express = require('express');
+-const rateLimit = require('express-rate-limit');
+-const pino = require('pino');
+-const { getLotteryDataFromApi } = require('./lotteryApi');
+-const { getLotteryDataWithCache, clearCache } = require('./cache');
+-const { v4: uuidv4 } = require('uuid');
++const express = require("express");
++const rateLimit = require("express-rate-limit");
++const pino = require("pino");
++const lotteryService = require("./services/LotteryApiService");
++const Config = require("./config");
++const { getLotteryDataWithCache, clearCache } = require("./cache");
++const { v4: uuidv4 } = require("uuid");
+ 
+ const app = express();
+ const port = process.env.PORT || 3000;
+ 
+ // Trust the X-Forwarded-For header from the first proxy
+-app.set('trust proxy', true);
++app.set("trust proxy", true);
+ 
+ // Configure the logger (pino)
+ const logger = pino({
+-    level: process.env.LOG_LEVEL || 'info',
+-    formatters: {
+-        level: (label) => {
+-            return { level: label };
+-        },
++  level: process.env.LOG_LEVEL || "info",
++  formatters: {
++    level: (label) => {
++      return { level: label };
+     },
++  },
+ });
+ 
+ // Configure the rate limiter
+ const limiter = rateLimit({
+-    windowMs: 60 * 1000, // 1 minute window
+-    max: process.env.RATE_LIMIT_MAX || 100, // Max 100 requests per minute per IP
+-    message: 'Too many requests from this IP, please try again later.',
+-    standardHeaders: true,
+-    legacyHeaders: false,
+-    keyGenerator: (req, res) => req.headers['x-real-ip'] || req.ip, // Use x-real-ip header or connection IP
++  windowMs: Config.RATE_LIMIT.WINDOW_MS,
++  max: Config.RATE_LIMIT.MAX_REQUESTS,
++  message: "Too many requests from this IP, please try again later.",
++  standardHeaders: true,
++  legacyHeaders: false,
++  keyGenerator: (req) => req.headers["x-real-ip"] || req.ip,
+ });
+ 
+ // Apply the rate limiter to all requests
+@@ -36,8 +37,8 @@ app.use(limiter);
+ 
+ // Middleware to add a unique request ID to each request
+ app.use((req, res, next) => {
+-    req.requestId = uuidv4();
+-    next();
++  req.requestId = uuidv4();
++  next();
+ });
+ 
+ // Middleware to parse JSON request bodies
+@@ -45,48 +46,89 @@ app.use(express.json());
+ 
+ // Function to validate the drawId format
+ function isValidDrawId(drawId) {
+-    return /^\d{10}$/.test(drawId);
++  return /^\d{10}$/.test(drawId);
+ }
+ 
+-// Endpoint to get lottery data
+-app.get('/api/lottery', async (req, res) => {
+-    const requestId = req.requestId;
+-    const clientIp = req.headers['x-real-ip'] || req.ip;
+-    const drawId = req.query.drawId || process.env.DEFAULT_DRAW_ID || '1259409102';
+-
+-    // Validate the drawId
+-    if (!isValidDrawId(drawId)) {
+-        logger.warn({ requestId, clientIp, drawId }, `Invalid drawId: ${drawId}`);
+-        return res.status(400).json({ error: 'Invalid drawId. It must be a 10-digit number.' });
+-    }
+-
+-    logger.info({ requestId, clientIp, drawId }, `Received request for drawId: ${drawId}`);
+-
+-    try {
+-        const data = await getLotteryDataWithCache(drawId, getLotteryDataFromApi, requestId);
+-        if (data) {
+-            res.json(data);
+-        }
+-    } catch (error) {
+-        logger.error({ requestId, clientIp, drawId, error: error.message, stack: error.stack }, `Error processing request for drawId: ${drawId}`);
+-        if (error.message === 'Invalid JSON response from API') {
+-            return res.status(502).json({ error: error.message });
+-        } else if (error.message.startsWith('HTTP error!')) {
+-            return res.status(parseInt(error.message.split(' ')[2])).json({ error: error.message });
+-        }
+-        res.status(500).json({ error: error.message });
+-    }
++// Endpoint to get lottery ticket info
++app.get("/api/lottery/ticket", async (req, res) => {
++  const { requestId, drawId } = _getRequestParams(req);
++
++  try {
++    const data = await _processApiRequest(
++      () => lotteryService.getTicketInfo(drawId, requestId),
++      requestId,
++      drawId
++    );
++    res.json(data);
++  } catch (error) {
++    _handleApiError(error, res, requestId, drawId);
++  }
++});
++
++// Endpoint to get draw results
++app.get("/api/lottery/results", async (req, res) => {
++  const { requestId, drawId } = _getRequestParams(req);
++
++  try {
++    const data = await _processApiRequest(
++      () => lotteryService.getDrawResults(drawId, requestId),
++      requestId,
++      drawId
++    );
++    res.json(data);
++  } catch (error) {
++    _handleApiError(error, res, requestId, drawId);
++  }
+ });
+ 
++function _getRequestParams(req) {
++  return {
++    requestId: req.requestId,
++    drawId: req.query.drawId || process.env.DEFAULT_DRAW_ID || "1259409102",
++    clientIp: req.headers["x-real-ip"] || req.ip,
++  };
++}
++
++async function _processApiRequest(apiCall, requestId, drawId) {
++  if (!isValidDrawId(drawId)) {
++    logger.warn({ requestId, drawId }, `Invalid drawId: ${drawId}`);
++    throw new Error("Invalid drawId. It must be a 10-digit number.");
++  }
++
++  return await apiCall();
++}
++
++function _handleApiError(error, res, requestId, drawId) {
++  logger.error(
++    {
++      requestId,
++      drawId,
++      error: error.message,
++      stack: error.stack,
++    },
++    `Error processing request`
++  );
++
++  if (error.message.includes("Invalid drawId")) {
++    return res.status(400).json({ error: error.message });
++  }
++
++  if (error.status) {
++    return res.status(error.status).json({ error: error.message });
++  }
++
++  res.status(500).json({ error: "Internal server error" });
++}
++
+ // Endpoint to clear the cache
+-app.get('/api/lottery/clearcache', async (req, res) => {
+-    const requestId = req.requestId;
+-    logger.info({ requestId }, `Clearing cache`);
+-    clearCache(requestId);
+-    res.json({ message: 'Cache cleared' });
++app.get("/api/lottery/clearcache", async (req, res) => {
++  const requestId = req.requestId;
++  logger.info({ requestId }, `Clearing cache`);
++  clearCache(requestId);
++  res.json({ message: "Cache cleared" });
+ });
+ 
+ // Start the server
+ app.listen(port, () => {
+-    logger.info(`Server listening on port ${port}`);
+-});
+\ No newline at end of file
++  logger.info(`Server listening on port ${port}`);
++});
+diff --git a/lotteryApi.js b/lotteryApi.js
+deleted file mode 100644
+index 18a5521..0000000
+--- a/lotteryApi.js
++++ /dev/null
+@@ -1,83 +0,0 @@
+-const fetch = require('node-fetch');
+-const pino = require('pino');
+-
+-const logger = pino({
+-    level: process.env.LOG_LEVEL || 'info',
+-    formatters: {
+-        level: (label) => {
+-            return { level: label };
+-        },
+-    },
+-});
+-
+-// Constants for the API
+-const API_BASE_URL = 'https://www.loteriasyapuestas.es/servicios/premioDecimoWeb';
+-const DEFAULT_HEADERS = {
+-    'accept': 'application/json, text/javascript, */*; q=0.01',
+-    'accept-language': 'en,es-ES;q=0.9,es;q=0.8',
+-    'referer': 'https://www.loteriasyapuestas.es/es/resultados/loteria-nacional/comprobar',
+-    'sec-ch-ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+-    'sec-ch-ua-mobile': '?0',
+-    'sec-ch-ua-platform': '"macOS"',
+-    'sec-fetch-dest': 'empty',
+-    'sec-fetch-mode': 'cors',
+-    'sec-fetch-site': 'same-origin',
+-    'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+-    'x-requested-with': 'XMLHttpRequest'
+-};
+-
+-// Function to fetch lottery data from the API
+-async function getLotteryDataFromApi(drawId, requestId) {
+-    const url = `${API_BASE_URL}?idsorteo=${drawId}`;
+-
+-    try {
+-        logger.debug({ requestId, drawId }, `Requesting data from API for drawId: ${drawId}`);
+-        const response = await fetch(url, { headers: DEFAULT_HEADERS });
+-
+-        if (!response.ok) {
+-            const text = await response.text();
+-            const truncatedText = text.substring(0, 200);
+-            logger.warn({ requestId, drawId, responseStatus: response.status, responseText: truncatedText }, `API returned an error for drawId: ${drawId}`);
+-            throw new Error(`HTTP error! status: ${response.status}`);
+-        }
+-
+-        // Read the body once and store it in a variable
+-        const responseText = await response.text();
+-
+-        // Log response headers and truncated body if debug level is enabled
+-        logger.debug({ requestId, drawId, responseHeaders: JSON.stringify(response.headers), responseBodyTruncated: responseText.substring(0, 200) }, `Response headers and truncated body for drawId: ${drawId}`);
+-
+-        // Parse the response as JSON
+-        const data = JSON.parse(responseText);
+-        
+-        return data;
+-
+-    } catch (error) {
+-        logger.error({
+-            requestId,
+-            drawId,
+-            message: 'Error retrieving lottery data',
+-            error: {
+-                message: error.message,
+-                stack: error.stack,
+-                type: error.type,
+-                code: error.code,
+-                response: error.response
+-                    ? {
+-                        status: error.response.status,
+-                        headers: error.response.headers,
+-                        body: error.response.text ? (await error.response.text()).substring(0, 200) + '...' : '',
+-                    }
+-                    : null,
+-            },
+-        }, `Error retrieving lottery data for drawId: ${drawId}`);
+-
+-        if (error.type === 'invalid-json') {
+-            throw new Error('Invalid JSON response from API');
+-        }
+-
+-        throw new Error('Error retrieving lottery data');
+-    }
+-}
+-
+-module.exports = { getLotteryDataFromApi };
+\ No newline at end of file
