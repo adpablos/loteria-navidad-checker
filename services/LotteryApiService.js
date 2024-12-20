@@ -27,8 +27,12 @@ class LotteryApiService {
     const url = `${this.config.BASE_URL}${endpoint}`;
 
     try {
-      logger.debug(
-        { requestId, endpoint },
+      logger.info(
+        {
+          requestId,
+          endpoint,
+          url,
+        },
         `Requesting ${operationType} from API`
       );
 
@@ -36,10 +40,26 @@ class LotteryApiService {
       const responseText = await response.text();
 
       if (!response.ok) {
+        logger.error(
+          {
+            requestId,
+            status: response.status,
+            response: responseText.substring(0, 200),
+          },
+          `API error response`
+        );
         throw this._createApiError(response.status, responseText);
       }
 
-      this._logApiResponse(requestId, response, responseText);
+      logger.info(
+        {
+          requestId,
+          status: response.status,
+          responseLength: responseText.length,
+        },
+        `Successfully retrieved ${operationType}`
+      );
+
       return JSON.parse(responseText);
     } catch (error) {
       this._handleApiError(error, requestId, operationType);

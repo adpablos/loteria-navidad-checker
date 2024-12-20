@@ -12,6 +12,7 @@
     "express-rate-limit": "^7.1.5",
     "node-fetch": "^2.7.0",
     "pino": "^8.15.0",
+    "pino-pretty": "^10.2.0",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
