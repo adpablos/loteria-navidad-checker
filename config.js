@@ -1,7 +1,12 @@
 class Config {
   static get API() {
     return {
-      BASE_URL: "https://www.loteriasyapuestas.es/servicios",
+      BASE_URL:
+        process.env.API_BASE_URL ||
+        "https://www.loteriasyapuestas.es/servicios",
+      PROXY_URL:
+        process.env.RAILWAY_PROXY_URL ||
+        "loteria-navidad-checker-production.up.railway.app",
       ENDPOINTS: {
         CHECK_TICKET: "/premioDecimoWeb",
         DRAW_RESULTS: "/resultados2",
@@ -29,6 +34,19 @@ class Config {
     return {
       WINDOW_MS: 60 * 1000,
       MAX_REQUESTS: process.env.RATE_LIMIT_MAX || 100,
+    };
+  }
+
+  static get LOG() {
+    return {
+      LEVEL: process.env.LOG_LEVEL || "info",
+    };
+  }
+
+  static get DEFAULT() {
+    return {
+      PORT: process.env.PORT || 3000,
+      DRAW_ID: process.env.DEFAULT_DRAW_ID || "1259409102",
     };
   }
 }
