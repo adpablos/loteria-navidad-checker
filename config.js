@@ -1,15 +1,17 @@
 class Config {
   static get API() {
     return {
-      BASE_URL:
-        process.env.API_BASE_URL ||
-        "https://www.loteriasyapuestas.es/servicios",
+      BASE_URL: process.env.API_BASE_URL || "https://www.loteriasyapuestas.es",
       PROXY_URL:
         process.env.RAILWAY_PROXY_URL ||
         "loteria-navidad-checker-production.up.railway.app",
       ENDPOINTS: {
-        CHECK_TICKET: "/premioDecimoWeb",
-        DRAW_RESULTS: "/resultados2",
+        CELEBRATION_STATE:
+          "/f/loterias/estaticos/json/estadoCelebracionLNAC.json",
+        CONFIGURACION_LNAC: "/f/loterias/estaticos/json/configuracionLNAC.json",
+        REALTIME_RESULTS: "/servicios/resultados1",
+        CHECK_TICKET: "/servicios/premioDecimoWeb",
+        POST_DRAW_RESULTS: "/servicios/resultados2",
       },
       HEADERS: {
         accept: "application/json, text/javascript, */*; q=0.01",

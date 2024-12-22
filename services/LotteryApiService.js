@@ -1,10 +1,36 @@
 const fetch = require("node-fetch");
 const Config = require("../config");
 const logger = require("../utils/logger");
+const {
+  normalizeResults,
+  createApiError,
+  logApiResponse,
+  handleApiError,
+} = require("../utils/lotteryUtils");
 
 class LotteryApiService {
   constructor() {
     this.config = Config.API;
+  }
+
+  async getCelebrationState(requestId) {
+    const endpoint = this.config.ENDPOINTS.CELEBRATION_STATE;
+    return this._makeApiCall(endpoint, requestId, "celebration state");
+  }
+
+  async getConfiguracionLNAC(requestId) {
+    const endpoint = this.config.ENDPOINTS.CONFIGURACION_LNAC;
+    return this._makeApiCall(endpoint, requestId, "LNAC config");
+  }
+
+  async getRealtimeResults(requestId) {
+    const endpoint = this.config.ENDPOINTS.REALTIME_RESULTS;
+    const rawData = await this._makeApiCall(
+      endpoint,
+      requestId,
+      "realtime results"
+    );
+    return normalizeResults(rawData);
   }
 
   async getTicketInfo(drawId, requestId) {
@@ -16,11 +42,12 @@ class LotteryApiService {
   }
 
   async getDrawResults(drawId, requestId) {
-    return this._makeApiCall(
+    const rawData = this._makeApiCall(
       `${this.config.ENDPOINTS.DRAW_RESULTS}?idsorteo=${drawId}`,
       requestId,
       "draw results"
     );
+    return normalizeResults(rawData);
   }
 
   async _makeApiCall(endpoint, requestId, operationType) {
@@ -48,7 +75,7 @@ class LotteryApiService {
           },
           `API error response`
         );
-        throw this._createApiError(response.status, responseText);
+        throw createApiError(response.status, responseText);
       }
 
       logger.info(
@@ -62,40 +89,9 @@ class LotteryApiService {
 
       return JSON.parse(responseText);
     } catch (error) {
-      this._handleApiError(error, requestId, operationType);
+      handleApiError(logger, error, requestId, operationType);
       throw error;
     }
-  }
-
-  _createApiError(status, text) {
-    const error = new Error(`HTTP error! status: ${status}`);
-    error.status = status;
-    error.responseText = text.substring(0, 200);
-    return error;
-  }
-
-  _logApiResponse(requestId, response, responseText) {
-    logger.debug(
-      {
-        requestId,
-        responseHeaders: JSON.stringify(response.headers),
-        responseBodyTruncated: responseText.substring(0, 200),
-      },
-      "API Response received"
-    );
-  }
-
-  _handleApiError(error, requestId, operationType) {
-    logger.error({
-      requestId,
-      message: `Error retrieving ${operationType}`,
-      error: {
-        message: error.message,
-        stack: error.stack,
-        status: error.status,
-        responseText: error.responseText,
-      },
-    });
   }
 }
 

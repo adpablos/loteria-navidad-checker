@@ -49,6 +49,17 @@ function isValidDrawId(drawId) {
   return /^\d{10}$/.test(drawId);
 }
 
+// Endpoint to get lottery state
+app.get("/api/lottery/state", async (req, res) => {
+  const requestId = req.requestId;
+  try {
+    const data = await lotteryService.getCelebrationState(requestId);
+    res.json(data);
+  } catch (error) {
+    _handleApiError(error, res, requestId, null);
+  }
+});
+
 // Endpoint to get lottery ticket info
 app.get("/api/lottery/ticket", async (req, res) => {
   const { requestId, drawId } = _getRequestParams(req);
@@ -70,12 +81,25 @@ app.get("/api/lottery/results", async (req, res) => {
   const { requestId, drawId } = _getRequestParams(req);
 
   try {
-    const data = await _processApiRequest(
-      () => lotteryService.getDrawResults(drawId, requestId),
-      requestId,
-      drawId
+    const { data, remainingTTL } = await getLotteryDataWithCache(
+      "results",
+      async () => {
+        // Fallback logic
+        const { statusLNACcelebration } =
+          await lotteryService.getCelebrationState(requestId);
+        if (statusLNACcelebration) {
+          return lotteryService.getRealtimeResults(requestId);
+        } else {
+          return lotteryService.getDrawResults(drawId, requestId);
+        }
+      },
+      requestId
     );
-    res.json(data);
+
+    // set the cache expiration header
+    res.setHeader("X-Cache-Expiration", remainingTTL.toString());
+
+    return res.json(data);
   } catch (error) {
     _handleApiError(error, res, requestId, drawId);
   }
