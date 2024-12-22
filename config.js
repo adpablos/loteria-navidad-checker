@@ -11,7 +11,7 @@ class Config {
         CONFIGURACION_LNAC: "/f/loterias/estaticos/json/configuracionLNAC.json",
         REALTIME_RESULTS: "/servicios/resultados1",
         CHECK_TICKET: "/servicios/premioDecimoWeb",
-        POST_DRAW_RESULTS: "/servicios/resultados2",
+        DRAW_RESULTS: "/servicios/resultados2",
       },
       HEADERS: {
         accept: "application/json, text/javascript, */*; q=0.01",
