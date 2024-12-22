@@ -5,18 +5,33 @@ const SS_ID = "1cfpTYarDEG4ZgK8gWmQVo45H1jpVbDyOowPDco8tB-k";
 const SHEET_NAME = new Date().getFullYear().toString();
 
 /**
+ * Constants for column names (used for lookup)
+ */
+const COLUMN_NAMES = {
+    "numero": "Número",
+    "decimos": "Decimos",
+    "quien": "Quien",
+    "para": "Para",
+    "premio_decimo": "Premio/decimo",
+    "entre": "Entre",
+    "premio": "Premio",
+    "notificado": "Notificado"
+};
+
+/**
  * Constants for column indexes
  */
 const COLUMNS = {
     NUMBER: 0,        // A: Número
     SHARES: 1,        // B: Decimos
-    BUYER: 2,         // C: Quien
+    BUYER: 2,        // C: Quien
     RECIPIENT: 3,     // D: Para
-    AWARD_PER_SHARE: 4, // E: Premio/decimo
-    BETWEEN: 5,       // F: Entre
-    AWARD: 6,         // G: Premio
-    NOTIFIED: 7,      // H: Notificado
-    SIMULATE: 8       // I: Simular
+    PARA: 4,         // E: Para (no tocar)
+    AWARD_PER_SHARE: 5, // F: Premio/decimo
+    BETWEEN: 6,      // G: Entre (no tocar)
+    AWARD: 7,        // H: Premio (calculado por fórmula)
+    NOTIFIED: 8,     // I: Notificado
+    SIMULATE: 9      // J: Simular
 };
 
 /**
@@ -41,10 +56,177 @@ const DRAW_CONFIG = {
 };
 
 /**
- * Gets the current spreadsheet
+ * Add mock flag and mock responses
  */
+const MOCK_MODE = true; // Toggle this to enable/disable mock mode
+const MOCK_RESPONSES = {
+    ticket: {
+        "tipoSorteo": "X",
+        "drawIdSorteo": "1258609100",
+        "compruebe": [
+            {
+                "decimo": "20884",
+                "prize": 6000000,
+                "prizeType": "G"
+            },
+            {
+                "decimo": "64390",
+                "prize": 1200000,
+                "prizeType": "Z"
+            },
+            {
+                "decimo": "74209",
+                "prize": 50000,
+                "prizeType": "T"
+            },
+            {
+                "decimo": "02891",
+                "prize": 600,
+                "prizeType": "R"
+            }
+        ]
+    },
+    results: {
+        "primerPremio": {
+            "decimo": "20884",
+            "prize": 6000000
+        },
+        "segundoPremio": {
+            "decimo": "64390",
+            "prize": 1200000
+        },
+        "tercerosPremios": [
+            {
+                "decimo": "74209",
+                "prize": 50000
+            }
+        ],
+        "cuartosPremios": [
+            {
+                "decimo": "12345",
+                "prize": 20000
+            },
+            {
+                "decimo": "67890",
+                "prize": 20000
+            }
+        ],
+        "quintosPremios": [
+            {
+                "decimo": "11111",
+                "prize": 6000
+            },
+            {
+                "decimo": "22222",
+                "prize": 6000
+            },
+            {
+                "decimo": "33333",
+                "prize": 6000
+            },
+            {
+                "decimo": "44444",
+                "prize": 6000
+            },
+            {
+                "decimo": "55555",
+                "prize": 6000
+            },
+            {
+                "decimo": "66666",
+                "prize": 6000
+            },
+            {
+                "decimo": "77777",
+                "prize": 6000
+            },
+            {
+                "decimo": "88888",
+                "prize": 6000
+            }
+        ]
+    }
+};
+
+/**
+ * Shows a standardized sheet not found alert and returns if user wants to see instructions
+ */
+function showSheetNotFoundAlert() {
+    Logger.log("⚠️ Showing sheet not found alert...");
+    const ui = SpreadsheetApp.getUi();
+    const currentYear = new Date().getFullYear().toString();
+    
+    const result = ui.alert(
+        '⚠️ Pestaña no encontrada',
+        `No se ha encontrado la pestaña "${currentYear}" necesaria para el funcionamiento.\n\n` +
+        'Por favor:\n' +
+        '1. Crea una nueva pestaña con el nombre "' + currentYear + '"\n' +
+        '2. Usa la pestaña "Ejemplo-Vacío" como referencia para su estructura\n' +
+        '3. Rellena tus números de lotería\n\n' +
+        '¿Quieres ver las instrucciones completas?',
+        ui.ButtonSet.YES_NO
+    );
+    
+    if (result === ui.Button.YES) {
+        Logger.log("👆 User requested to see instructions");
+        const success = showInstructions();
+        if (!success) {
+            Logger.log("❌ Failed to navigate to instructions");
+            ui.alert('Error', 
+                    'No se pudo abrir la pestaña de instrucciones. Por favor, búscala manualmente.',
+                    ui.ButtonSet.OK);
+        }
+    } else {
+        Logger.log("👆 User declined to see instructions");
+    }
+    
+    return false;
+}
+
+/**
+ * Shows instructions sheet
+ * @return {boolean} True if successfully navigated to instructions
+ */
+function showInstructions() {
+    Logger.log("📖 Attempting to open instructions sheet...");
+    try {
+        const ss = SpreadsheetApp.getActive();
+        const instructionsSheet = ss.getSheetByName('Instrucciones');
+        
+        if (!instructionsSheet) {
+            Logger.log("❌ Instructions sheet 'Instrucciones' not found");
+            return false;
+        }
+        
+        ss.setActiveSheet(instructionsSheet);
+        SpreadsheetApp.flush(); // Force the UI to update
+        Logger.log("✅ Successfully navigated to instructions sheet");
+        return true;
+        
+    } catch (error) {
+        Logger.log(`❌ Error showing instructions: ${error}`);
+        return false;
+    }
+}
+
+/**
+ * Gets the current spreadsheet (cached to avoid multiple lookups)
+ */
+let _cachedSheet = null;
 function getSpreadsheet() {
-    return SpreadsheetApp.openById(SS_ID).getSheetByName(SHEET_NAME);
+    if (_cachedSheet) return _cachedSheet;
+    
+    const ss = SpreadsheetApp.getActive();
+    const currentYear = new Date().getFullYear().toString();
+    const sheet = ss.getSheetByName(currentYear);
+    
+    if (!sheet) {
+        Logger.log(`❌ Sheet ${currentYear} not found`);
+        return null;
+    }
+    
+    _cachedSheet = sheet;
+    return sheet;
 }
 
 /**
@@ -59,13 +241,34 @@ const ApiUrlBuilder = {
 };
 
 /**
+ * Modified fetchLotteryData to use mock data when MOCK_MODE is true
+ */
+function fetchLotteryData(endpoint, drawId) {
+  if (MOCK_MODE) {
+    Logger.log(`Using mock data for endpoint: ${endpoint}`);
+    return MOCK_RESPONSES[endpoint];
+  }
+
+  const baseUrl = "https://loteria-navidad-checker-production.up.railway.app/api/lottery";
+  const url = `${baseUrl}/${endpoint}?drawId=${drawId}`;
+  
+  try {
+    const response = UrlFetchApp.fetch(url);
+    return JSON.parse(response.getContentText());
+  } catch (error) {
+    Logger.log(`Error fetching data: ${error}`);
+    throw error;
+  }
+}
+
+/**
  * Gets lottery data from both endpoints
  */
 async function getLotteryData() {
     try {
         const [ticketData, resultsData] = await Promise.all([
-            fetchApi(ApiUrlBuilder.getTicketUrl(DRAW_CONFIG.ID)),
-            fetchApi(ApiUrlBuilder.getResultsUrl(DRAW_CONFIG.ID))
+            fetchLotteryData("ticket", DRAW_CONFIG.ID),
+            fetchLotteryData("results", DRAW_CONFIG.ID)
         ]);
 
         return {
@@ -102,84 +305,383 @@ async function fetchApi(url) {
  */
 function updateMainAwards(resultsData) {
     if (!resultsData) return;
-
+    
     const sheet = getSpreadsheet();
+    Logger.log("🎯 Updating main awards table...");
+    
+    // Define the awards mapping
     const awards = [
-        { name: "Gordo", prize: resultsData.primerPremio },
-        { name: "Segundo", prize: resultsData.segundoPremio },
-        { name: "Tercer", prize: resultsData.tercerosPremios[0] },
-        { name: "Cuarto 1", prize: resultsData.cuartosPremios[0] },
-        { name: "Cuarto 2", prize: resultsData.cuartosPremios[1] },
-        ...resultsData.quintosPremios.map((prize, index) => 
-            ({ name: `Quinto ${index + 1}`, prize }))
+        { name: "Gordo", data: resultsData.primerPremio },
+        { name: "Segundo", data: resultsData.segundoPremio },
+        { name: "Tercer", data: resultsData.tercerosPremios?.[0] },
+        { name: "Cuarto 1", data: resultsData.cuartosPremios?.[0] },
+        { name: "Cuarto 2", data: resultsData.cuartosPremios?.[1] },
+        ...resultsData.quintosPremios?.map((prize, index) => 
+            ({ name: `Quinto ${index + 1}`, data: prize }))
     ];
 
-    // Clear previous values
-    const clearRange = sheet.getRange(
-        DRAW_CONFIG.MAIN_AWARDS_START_ROW, 
-        1, 
-        DRAW_CONFIG.MAIN_AWARDS_COUNT, 
-        3
-    );
-    clearRange.clearContent();
+    Logger.log(`Found ${awards.length} awards to update`);
 
-    // Update with new values
+    // Find the results table start row
+    const resultsTableRow = findResultsTableRow(sheet);
+    if (!resultsTableRow) {
+        Logger.log("❌ Could not find results table");
+        return;
+    }
+
+    Logger.log(`📝 Found results table starting at row ${resultsTableRow}`);
+
+    // Update awards in the correct cells
     awards.forEach((award, index) => {
-        if (award.prize) {
-            const row = DRAW_CONFIG.MAIN_AWARDS_START_ROW + index;
-            sheet.getRange(row, 1).setValue(award.name);
-            sheet.getRange(row, 2).setValue(award.prize.decimo);
-            sheet.getRange(row, 3).setValue(award.prize.prize);
+        if (award.data) {
+            const row = resultsTableRow + index;
+            sheet.getRange(row, 4).setValue(award.name);        // Column D (Premio)
+            sheet.getRange(row, 5).setValue(award.data.decimo); // Column E (Número)
+            sheet.getRange(row, 6).setValue(award.data.prize);  // Column F (Premio)
+            Logger.log(`✅ Updated ${award.name}: ${award.data.decimo} - ${award.data.prize.toLocaleString()}€`);
         }
     });
 }
 
 /**
- * Updates individual ticket results using the ticket endpoint
+ * Finds the row where the results table starts
+ * @param {Sheet} sheet The spreadsheet to search in
+ * @returns {number|null} The row number where the results table starts or null if not found
  */
-function updateTicketResults(ticketData) {
-    const sheet = getSpreadsheet();
-    const numbersColumn = getColumn("Número");
-    const sharesColumn = getColumn("decimos");
+function findResultsTableRow(sheet) {
+    const data = sheet.getDataRange().getValues();
+    for (let i = 0; i < data.length; i++) {
+        // Buscar en todas las columnas de la fila
+        for (let j = 0; j < data[i].length; j++) {
+            if (data[i][j] === "Resultados sorteo") {
+                Logger.log(`🎯 Found "Resultados sorteo" at row ${i + 1}, column ${j + 1}`);
+                return i + 2; // +2 porque queremos la primera fila después del encabezado
+            }
+        }
+    }
+    Logger.log("❌ Could not find 'Resultados sorteo' header");
+    return null;
+}
 
-    if (!numbersColumn || !sharesColumn) return;
+/**
+ * Finds an award in the lottery data
+ * @param {object} data The lottery data
+ * @param {string} number The number to find
+ * @returns {object|null} The award or null if not found
+ */
+function findAward(data, number) {
+    if (!data || !data.compruebe) return null;
+    
+    const award = data.compruebe.find(item => item.decimo === number);
+    return award || null;
+}
 
-    // Clear previous values
-    const lastRow = sheet.getLastRow();
-    const clearRange = sheet.getRange(
-        DRAW_CONFIG.AWARDS_START_ROW, 
-        COLUMNS.AWARD_PER_SHARE + 1, 
-        lastRow - DRAW_CONFIG.AWARDS_START_ROW + 1, 
-        2
+/**
+ * Structure to hold table boundaries
+ */
+class TableBoundaries {
+    constructor(startRow, endRow, columns) {
+        this.startRow = startRow;
+        this.endRow = endRow;
+        this.columns = columns;
+    }
+}
+
+/**
+ * Finds the main table boundaries
+ * @param {Sheet} sheet The spreadsheet to search in
+ * @returns {TableBoundaries} Object with table boundaries
+ */
+function findMainTableBoundaries(sheet) {
+    Logger.log("🔍 Looking for main table boundaries...");
+    const data = sheet.getDataRange().getValues();
+    let tableInfo = {
+        headerRow: -1,
+        startRow: -1,
+        endRow: -1,
+        columns: {}
+    };
+
+    // Find header row (looking for "Número")
+    for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+        const numeroIndex = row.findIndex(cell => 
+            normalizeString(String(cell)) === normalizeString(COLUMN_NAMES.numero));
+        
+        if (numeroIndex !== -1) {
+            tableInfo.headerRow = i;
+            // Map all column headers
+            row.forEach((header, index) => {
+                const normalizedHeader = normalizeString(String(header));
+                Object.entries(COLUMN_NAMES).forEach(([key, value]) => {
+                    if (normalizeString(value) === normalizedHeader) {
+                        tableInfo.columns[key] = index;
+                    }
+                });
+            });
+            break;
+        }
+    }
+
+    if (tableInfo.headerRow === -1) {
+        Logger.log("❌ Could not find table headers");
+        return null;
+    }
+
+    // Find last row with data
+    tableInfo.startRow = tableInfo.headerRow + 1;
+    for (let i = tableInfo.startRow; i < data.length; i++) {
+        const numero = data[i][tableInfo.columns.numero];
+        if (!numero) {
+            tableInfo.endRow = i - 1;
+            break;
+        }
+    }
+
+    if (tableInfo.endRow === -1) {
+        tableInfo.endRow = data.length - 1;
+    }
+
+    Logger.log(`📊 Table found: Rows ${tableInfo.startRow + 1} to ${tableInfo.endRow + 1}`);
+    Logger.log(`📑 Columns found: ${Object.keys(tableInfo.columns).map(key => COLUMN_NAMES[key]).join(", ")}`);
+
+    return new TableBoundaries(
+        tableInfo.startRow + 1,
+        tableInfo.endRow + 1,
+        tableInfo.columns
     );
-    clearRange.clearContent();
+}
 
-    // Update ticket results
-    numbersColumn.forEach((num, i) => {
-        if (!num || typeof num !== 'number') return;
+/**
+ * Gets column values within the table boundaries
+ */
+function getColumnValues(columnKey) {
+    const sheet = getSpreadsheet();
+    const boundaries = findMainTableBoundaries(sheet);
+    
+    if (!boundaries) return null;
+    
+    const columnIndex = boundaries.columns[columnKey.toLowerCase()];
+    if (columnIndex === undefined) {
+        Logger.log(`❌ Column ${COLUMN_NAMES[columnKey]} not found`);
+        return null;
+    }
 
-        const row = DRAW_CONFIG.AWARDS_START_ROW + i;
-        const share = sharesColumn[i];
-        const award = findAward(ticketData, num.toString());
+    const numRows = boundaries.endRow - boundaries.startRow + 1;
+    const values = sheet.getRange(
+        boundaries.startRow,
+        columnIndex + 1,
+        numRows,
+        1
+    ).getValues().flat();
+
+    Logger.log(`📊 Retrieved ${values.length} values from column ${COLUMN_NAMES[columnKey]}`);
+    return values;
+}
+
+/**
+ * Gets multiple column values in a single operation
+ */
+function getTicketData() {
+    const sheet = getSpreadsheet();
+    const boundaries = findMainTableBoundaries(sheet);
+    
+    if (!boundaries) {
+        Logger.log("❌ Could not find table boundaries");
+        return null;
+    }
+
+    Logger.log("\n📊 Table information:");
+    Logger.log(`   • Rows: ${boundaries.startRow} to ${boundaries.endRow}`);
+    Logger.log(`   • Columns: ${Object.values(COLUMN_NAMES).join(", ")}`);
+
+    const numRows = boundaries.endRow - boundaries.startRow + 1;
+    return {
+        numbers: sheet.getRange(boundaries.startRow, boundaries.columns.numero + 1, numRows, 1).getValues().flat(),
+        shares: sheet.getRange(boundaries.startRow, boundaries.columns.decimos + 1, numRows, 1).getValues().flat(),
+        notified: sheet.getRange(boundaries.startRow, boundaries.columns.notificado + 1, numRows, 1).getValues().flat()
+    };
+}
+
+/**
+ * Updates ticket results using the ticket endpoint
+ */
+async function updateTicketResults(ticketData, sheet) {
+    Logger.log("\n🎟️ Starting ticket check process...");
+    
+    const tableData = getTicketData();
+    if (!tableData) {
+        Logger.log("❌ Could not retrieve ticket data");
+        return;
+    }
+
+    const { numbers, shares, notified } = tableData;
+    Logger.log(`📊 Processing ${numbers.length} tickets\n`);
+
+    let stats = {
+        checked: 0,
+        winners: 0,
+        newNotifications: 0,
+        previouslyNotified: 0,
+        totalPrize: 0
+    };
+
+    for (let i = 0; i < numbers.length; i++) {
+        const number = numbers[i];
+        if (!number) continue;
+        
+        stats.checked++;
+        Logger.log(`🔍 Checking number ${number} (notification status: ${notified[i] ? "already notified" : "not notified"})`);
+        
+        const formattedNum = number.toString().padStart(5, '0');
+        const wasNotified = notified[i] === "Yes";
+        
+        const award = findAward(ticketData, formattedNum);
 
         if (award) {
+            const share = shares[i];
+            const totalPrize = award.prize * share;
+            stats.winners++;
+            stats.totalPrize += totalPrize;
+            
+            // Update spreadsheet cells
+            const row = DRAW_CONFIG.AWARDS_START_ROW + i;
             sheet.getRange(row, COLUMNS.AWARD_PER_SHARE + 1).setValue(award.prize);
-            sheet.getRange(row, COLUMNS.AWARD + 1).setValue(award.prize * share);
+            
+            if (award.prize > 0) {
+                if (!wasNotified) {
+                    Logger.log(`   💰 Winner! Prize: ${award.prize.toLocaleString()}€/ticket x ${share} tickets = ${totalPrize.toLocaleString()}€`);
+                    Logger.log(`   📧 Sending notification...`);
+                    notifyWinner(formattedNum, award.prize, share);
+                    stats.newNotifications++;
+                } else {
+                    Logger.log(`   💰 Winner! Prize: ${award.prize.toLocaleString()}€/ticket x ${share} tickets = ${totalPrize.toLocaleString()}€`);
+                    Logger.log(`   ℹ️ Notification already sent`);
+                    stats.previouslyNotified++;
+                }
+            }
+        } else {
+            Logger.log(`   ❌ No prize for this number`);
         }
-    });
+    }
+
+    // Final summary with better formatting
+    Logger.log("\n📊 Final Summary:");
+    Logger.log(`   • Numbers checked: ${stats.checked}`);
+    Logger.log(`   • Winners found: ${stats.winners}`);
+    Logger.log(`   • New notifications sent: ${stats.newNotifications}`);
+    Logger.log(`   • Previously notified: ${stats.previouslyNotified}`);
+    Logger.log(`   • Total prize money: ${stats.totalPrize.toLocaleString()}€`);
+}
+
+/**
+ * Sends notification email to winner(s)
+ */
+function notifyWinner(number, prizePerShare, shares) {
+    const sheet = getSpreadsheet();
+    const notificationEmails = sheet.getRange("B7").getValue().toString();
+    
+    if (!notificationEmails) {
+        Logger.log("❌ No notification email found in cell B7");
+        return;
+    }
+
+    // Split emails and validate
+    const emails = notificationEmails.split(',')
+        .map(email => email.trim())
+        .filter(email => email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/));
+    
+    if (emails.length === 0) {
+        Logger.log("❌ No valid emails found");
+        return;
+    }
+
+    if (emails.length > 5) {
+        Logger.log("⚠️ Too many email addresses (max: 5). Using only the first 5.");
+        emails.length = 5;
+    }
+
+    const totalPrize = prizePerShare * shares;
+    
+    try {
+        MailApp.sendEmail({
+            to: emails.join(','),
+            subject: `🎉 ¡Premio de Lotería! Número ${number}`,
+            htmlBody: `
+                <h2>¡Enhorabuena! 🎊</h2>
+                <p>Tu número <strong>${number}</strong> ha sido premiado.</p>
+                <p>Detalles del premio:</p>
+                <ul>
+                    <li>Premio por décimo: ${prizePerShare.toLocaleString()}€</li>
+                    <li>Número de décimos: ${shares}</li>
+                    <li>Premio total: ${totalPrize.toLocaleString()}€</li>
+                </ul>
+                <p>¡Disfruta tu premio! 🎉</p>
+            `
+        });
+        
+        Logger.log(`📧 Notification sent to ${emails.length} recipient(s) for number ${number}`);
+        
+        // Mark as notified in the spreadsheet
+        const row = findRowByNumber(number);
+        if (row) {
+            sheet.getRange(row, COLUMNS.NOTIFIED + 1).setValue("Yes");
+        }
+    } catch (error) {
+        Logger.log(`❌ Error sending notification: ${error}`);
+    }
+}
+
+/**
+ * Finds the row number for a given lottery number
+ */
+function findRowByNumber(number) {
+    const sheet = getSpreadsheet();
+    const numbers = getColumn("Número");
+    const index = numbers.findIndex(num => num.toString().padStart(5, '0') === number);
+    return index >= 0 ? DRAW_CONFIG.AWARDS_START_ROW + index : null;
 }
 
 /**
  * Updates the status message in the spreadsheet
  */
-function updateStatus(success = true) {
+function updateStatus(success = true, noData = false) {
     const sheet = getSpreadsheet();
-    const timestamp = new Date().toLocaleString();
-    const message = success 
-        ? `Resultados actualizados - Última actualización: ${timestamp}`
-        : `Sorteo no disponible - Última actualización: ${timestamp}`;
+    if (!sheet) return;
+    
+    const timestamp = new Date().toLocaleString("es-ES", {timeZone: "Europe/Madrid"});
+    let message;
+    
+    if (noData) {
+        message = `Sorteo pendiente - El sorteo comenzará el 22 de diciembre a las 9:00h - Última comprobación: ${timestamp}`;
+    } else {
+        message = success 
+            ? `Resultados actualizados - Última actualización: ${timestamp}`
+            : `Sorteo no disponible - Última comprobación: ${timestamp}`;
+    }
     
     sheet.getRange("B5").setValue(message);
+}
+
+/**
+ * Checks if the draw is still in celebration.
+ * Returns true if we should continue updating, false if we should stop.
+ */
+function shouldContinueUpdating() {
+  // Example: call your /api/lottery/state endpoint
+  try {
+    const url = "https://loteria-navidad-checker-production.up.railway.app/api/lottery/state";
+    const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) {
+      Logger.log("Unable to fetch celebration state, defaulting to 'false'.");
+      return false;
+    }
+    const data = JSON.parse(response.getContentText());
+    return !!data.estadoCelebracionLNAC; 
+  } catch (error) {
+    Logger.log(`Error checking celebration state: ${error}`);
+    return false;
+  }
 }
 
 /**
@@ -187,38 +689,314 @@ function updateStatus(success = true) {
  */
 async function updateLotteryInformation() {
     try {
+        Logger.log("\n🎯 Starting lottery update process...");
+        
+        // Step 1: Check if we should stop the auto-update trigger
+        if (!shouldContinueUpdating()) {
+          Logger.log("Draw is not in celebration. Stopping auto-update...");
+          stopAutoUpdate(false); 
+        }
+
+        const sheet = getSpreadsheet();
+        if (!sheet) {
+            showSheetNotFoundAlert();
+            return;
+        }
+        
+        Logger.log("📡 Fetching lottery data...");
         const data = await getLotteryData();
         
-        if (!data) {
+        if (!data || !data.resultsData || !data.ticketData) {
+            Logger.log("ℹ️ No lottery data available");
+            showLotteryNotAvailableAlert();
             updateStatus(false);
             return;
         }
 
-        updateMainAwards(data.resultsData);
-        updateTicketResults(data.ticketData);
+        // Actualizar tabla de premios principales
+        Logger.log("\n1️⃣ Updating main awards table...");
+        await updateMainAwards(data.resultsData);
+
+        // Procesar tickets individuales
+        Logger.log("\n2️⃣ Processing individual tickets...");
+        await updateTicketResults(data.ticketData, sheet);
+
+        Logger.log("\n✅ Update process completed successfully");
         updateStatus(true);
 
     } catch (error) {
-        console.error('Error updating lottery information:', error);
+        Logger.log(`❌ Error in updateLotteryInformation: ${error}`);
+        console.error('Error in updateLotteryInformation:', error);
+        showLotteryNotAvailableAlert();
         updateStatus(false);
     }
+}
+
+/**
+ * Shows an alert when lottery results are not available
+ */
+function showLotteryNotAvailableAlert() {
+    const ui = SpreadsheetApp.getUi();
+    ui.alert(
+        '⏳ Sorteo no disponible',
+        'No se ha podido conectar con el servicio de resultados.\n\n' +
+        'Por favor, inténtalo de nuevo más tarde.',
+        ui.ButtonSet.OK
+    );
+}
+
+/**
+ * Shows an alert when lottery draw hasn't started yet
+ */
+function showLotteryNotStartedAlert() {
+    const ui = SpreadsheetApp.getUi();
+    const currentYear = new Date().getFullYear().toString();
+    
+    ui.alert(
+        '⏰ Sorteo pendiente',
+        `El sorteo de Lotería de Navidad ${currentYear} aún no ha comenzado.\n\n` +
+        'El sorteo se celebra el 22 de diciembre a partir de las 9:00h.\n' +
+        'Durante el sorteo, los resultados se actualizarán automáticamente cada 5 minutos.\n\n' +
+        'Puedes volver a comprobar manualmente usando el menú Loteria > Actualizar Resultados.',
+        ui.ButtonSet.OK
+    );
 }
 
 /**
  * Trigger function when spreadsheet is opened
  */
 function onOpen() {
-    updateLotteryInformation();
-    createMenu();
+    Logger.log("🚀 Starting onOpen process...");
+    
+    try {
+        // Create custom menu
+        const ui = SpreadsheetApp.getUi();
+        ui.createMenu("Loteria")
+            .addItem("Actualizar Resultados", "updateLotteryInformation")
+            .addItem("Enviar Notificaciones", "notifyIfWinner")
+            .addSeparator()
+            .addItem("Iniciar Actualización Automática", "startAutoUpdate")
+            .addItem("Detener Actualización Automática", "stopAutoUpdate")
+            .addSeparator()
+            .addItem("Limpiar Cache", "clearApiCache")
+            .addSeparator()
+            .addItem("Ver Instrucciones", "showInstructions")
+            .addToUi();
+        Logger.log("📋 Custom menu created");
+
+        // Check if sheet exists
+        const ss = SpreadsheetApp.openById(SS_ID);
+        const currentYear = new Date().getFullYear().toString();
+        const sheet = ss.getSheetByName(currentYear);
+        
+        if (!sheet) {
+            Logger.log(`⚠️ Sheet ${currentYear} not found, showing alert to user`);
+            showSheetNotFoundAlert();
+            return;
+        }
+
+        // If within lottery hours, set up auto-refresh
+        if (isWithinLotteryHours()) {
+            Logger.log("🕒 Within lottery hours, setting up auto-refresh");
+            updateLotteryInformation();
+            setupAutoRefresh();
+            Logger.log("🔄 Auto-refresh enabled - Checking every 5 minutes during lottery hours");
+        } else {
+            Logger.log("ℹ️ Outside lottery hours, auto-refresh not needed");
+        }
+
+    } catch (error) {
+        Logger.log(`❌ Error in onOpen: ${error}`);
+        console.error('Error in onOpen:', error);
+    }
 }
 
 /**
- * Creates the menu in the spreadsheet
+ * Gets the values of a column by its header name
+ * @param {string} columnName The name of the column header
+ * @returns {Array} The column values
  */
-function createMenu() {
+function getColumn(columnName) {
+    const sheet = getSpreadsheet();
+    const headers = sheet.getRange("A9:Z9").getValues()[0];
+    const colIndex = headers.findIndex(header => 
+        normalizeString(header) === normalizeString(columnName));
+
+    if (colIndex === -1) {
+        Logger.log(`Column ${columnName} not found`);
+        return null;
+    }
+
+    const values = sheet.getRange(DRAW_CONFIG.AWARDS_START_ROW, colIndex + 1, 
+        sheet.getLastRow() - DRAW_CONFIG.AWARDS_START_ROW + 1)
+        .getValues()
+        .flat();
+    
+    Logger.log(`Retrieved ${values.length} values from column ${columnName}: ${JSON.stringify(values)}`);
+    return values;
+}
+
+/**
+ * Normalizes a string by converting to lowercase and removing diacritics
+ * @param {string} str The string to normalize
+ * @returns {string} The normalized string
+ */
+function normalizeString(str) {
+    return str.toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+}
+
+/**
+ * Checks if we're within lottery hours (9:00 AM - 3:00 PM Spain time on Dec 22)
+ */
+function isWithinLotteryHours() {
+    const now = new Date();
+    const spainTime = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Madrid"}));
+    
+    return spainTime.getMonth() === 11 && // December
+           spainTime.getDate() === 22 &&
+           spainTime.getHours() >= 9 &&
+           spainTime.getHours() < 15; // Until 3:00 PM
+}
+
+/**
+ * Sets up automatic refresh during lottery hours
+ */
+function setupAutoRefresh() {
+    if (!isWithinLotteryHours()) return;
+    
+    // Delete any existing triggers
+    ScriptApp.getProjectTriggers().forEach(trigger => {
+        if (trigger.getHandlerFunction() === 'updateLotteryInformation') {
+            ScriptApp.deleteTrigger(trigger);
+        }
+    });
+    
+    // Create new trigger to run every 5 minutes during lottery hours
+    ScriptApp.newTrigger('updateLotteryInformation')
+        .timeBased()
+        .everyMinutes(5)
+        .create();
+}
+
+/**
+ * Creates the Instructions sheet if it doesn't exist
+ */
+function createInstructionsSheet() {
+    const ss = SpreadsheetApp.openById(SS_ID);
+    let instructionsSheet = ss.getSheetByName("Instructions");
+    
+    if (!instructionsSheet) {
+        instructionsSheet = ss.insertSheet("Instructions", 0);
+        
+        // Basic formatting
+        instructionsSheet.setColumnWidth(1, 50);  // A
+        instructionsSheet.setColumnWidth(2, 600); // B
+        
+        // Content
+        const instructions = [
+            ["🎯", "How to use this spreadsheet"],
+            ["1️⃣", "The spreadsheet will automatically check for lottery results on December 22nd between 9:00 AM and 2:00 PM (Spain time)"],
+            ["2️⃣", "Your lottery numbers should be entered in the year tab (e.g., '2024')"],
+            ["3️⃣", "Required columns:"],
+            ["", "• Número: Your lottery number"],
+            ["", "• Decimos: Number of tickets for that number"],
+            ["", "• Quien: Who bought it"],
+            ["", "• Para: Who it's for"],
+            ["", "• Notificado: Will be automatically updated when winners are notified"],
+            ["4️⃣", "Email notifications will be sent to the address specified in cell B7"],
+            ["5️⃣", "You can manually update results using the 'Loteria' menu > 'Update Results'"],
+            ["⚠️", "Important notes:"],
+            ["", "• The spreadsheet automatically updates when opened during lottery hours"],
+            ["", "• Notifications are only sent once per winning number"],
+            ["", "• All amounts are in Euros (€)"]
+        ];
+        
+        instructionsSheet.getRange(1, 1, instructions.length, 2).setValues(instructions);
+        
+        // Formatting
+        instructionsSheet.getRange("A1:B1").setFontWeight("bold");
+        instructionsSheet.getRange("A:B").setWrap(true);
+    }
+}
+
+/**
+ * Clears the API cache
+ */
+function clearApiCache() {
+    Logger.log("🧹 Clearing API cache...");
+    try {
+        const response = UrlFetchApp.fetch(`https://${API.BASE_URL}/api/lottery/clearcache`);
+        if (response.getResponseCode() === 200) {
+            Logger.log("✅ Cache cleared successfully");
+            SpreadsheetApp.getUi().alert(
+                '✅ Cache limpiado',
+                'El cache ha sido limpiado correctamente.',
+                SpreadsheetApp.getUi().ButtonSet.OK
+            );
+        }
+    } catch (error) {
+        Logger.log(`❌ Error clearing cache: ${error}`);
+        SpreadsheetApp.getUi().alert(
+            '❌ Error',
+            'No se pudo limpiar el cache. Por favor, inténtalo de nuevo más tarde.',
+            SpreadsheetApp.getUi().ButtonSet.OK
+        );
+    }
+}
+
+/**
+ * Starts automatic update process
+ */
+function startAutoUpdate() {
     const ui = SpreadsheetApp.getUi();
-    ui.createMenu("Loteria")
-        .addItem("Update Results", "updateLotteryInformation")
-        .addItem("Send Notifications", "notifyIfWinner")
-        .addToUi();
+    const response = ui.alert(
+        '🔄 Iniciar actualización automática',
+        'Esto iniciará la actualización automática cada 5 minutos.\n\n' +
+        '¿Deseas continuar?',
+        ui.ButtonSet.YES_NO
+    );
+
+    if (response === ui.Button.YES) {
+        // Delete any existing triggers first
+        stopAutoUpdate(false);
+        
+        // Create new trigger
+        ScriptApp.newTrigger('updateLotteryInformation')
+            .timeBased()
+            .everyMinutes(5)
+            .create();
+        
+        Logger.log("🔄 Auto-update started - Checking every 5 minutes");
+        ui.alert(
+            '✅ Actualización automática iniciada',
+            'Los resultados se actualizarán automáticamente cada 5 minutos.\n\n' +
+            'Puedes detener el proceso en cualquier momento desde el menú.',
+            ui.ButtonSet.OK
+        );
+    }
+}
+
+/**
+ * Stops automatic update process
+ * @param {boolean} showAlert Whether to show a confirmation alert
+ */
+function stopAutoUpdate(showAlert = true) {
+    // Delete all updateLotteryInformation triggers
+    ScriptApp.getProjectTriggers().forEach(trigger => {
+        if (trigger.getHandlerFunction() === 'updateLotteryInformation') {
+            ScriptApp.deleteTrigger(trigger);
+        }
+    });
+    
+    Logger.log("⏹️ Auto-update stopped");
+    
+    if (showAlert) {
+        SpreadsheetApp.getUi().alert(
+            '⏹️ Actualización automática detenida',
+            'Se ha detenido el proceso de actualización automática.',
+            SpreadsheetApp.getUi().ButtonSet.OK
+        );
+    }
 }
