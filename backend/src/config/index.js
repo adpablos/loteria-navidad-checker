@@ -54,8 +54,8 @@ class Config {
    */
   static get RATE_LIMIT() {
     return {
-      WINDOW_MS: 60 * 1000,
-      MAX_REQUESTS: process.env.RATE_LIMIT_MAX || 100,
+      WINDOW_MS: 60 * 1000, // 1 minute
+      MAX_REQUESTS: parseInt(process.env.RATE_LIMIT_MAX, 10) || 100,
     };
   }
 
@@ -67,7 +67,8 @@ class Config {
    */
   static get LOG() {
     return {
-      LEVEL: process.env.LOG_LEVEL || "info",
+      LEVEL: process.env.LOG_LEVEL?.toLowerCase() || "info",
+      PRETTY: process.env.LOG_PRETTY === "true",
     };
   }
 
@@ -80,8 +81,28 @@ class Config {
    */
   static get DEFAULT() {
     return {
-      PORT: process.env.PORT || 3000,
+      PORT: parseInt(process.env.PORT, 10) || 3000,
       DRAW_ID: process.env.DEFAULT_DRAW_ID || "1259409102",
+    };
+  }
+
+  /**
+   * Environment configuration.
+   *
+   * @returns {Object} Environment settings
+   * @property {string} NODE_ENV - Current environment (development, production, test)
+   * @property {boolean} IS_PRODUCTION - Whether the app is running in production
+   * @property {boolean} IS_DEVELOPMENT - Whether the app is running in development
+   * @property {boolean} IS_TEST - Whether the app is running in test
+   */
+  static get ENV() {
+    const nodeEnv = process.env.NODE_ENV || "development";
+
+    return {
+      NODE_ENV: nodeEnv,
+      IS_PRODUCTION: nodeEnv === "production",
+      IS_DEVELOPMENT: nodeEnv === "development",
+      IS_TEST: nodeEnv === "test",
     };
   }
 }

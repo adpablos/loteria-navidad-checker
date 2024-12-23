@@ -1,0 +1,62 @@
+# Dependencies
+**/node_modules/
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/.pnpm-debug.log*
+
+# Testing
+**/coverage/
+**/test-results/
+**/.nyc_output/
+**/jest-report/
+
+# Production
+**/dist/
+**/build/
+
+# Development
+**/.env
+**/.env.local
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
+
+# Logs
+**/logs/
+**/*.log
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# IDE - JetBrains
+.idea/
+*.iml
+*.iws
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Temp files
+*~
+*.swp
+*.swo
+.temp/
+.cache/
+
+# Debug
+.debug/
+
+# History
+.history/
