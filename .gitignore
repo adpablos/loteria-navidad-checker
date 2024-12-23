@@ -57,3 +57,6 @@ Desktop.ini
 
 # Debug
 .debug/
+
+# History
+.history/
