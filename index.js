@@ -6,13 +6,19 @@ const Config = require("./config");
 const { getLotteryDataWithCache, clearCache } = require("./cache");
 const { v4: uuidv4 } = require("uuid");
 
+/**
+ * Express application instance.
+ * @type {Express}
+ */
 const app = express();
 const port = process.env.PORT || 3000;
 
 // Trust the X-Forwarded-For header from the first proxy
 app.set("trust proxy", true);
 
-// Configure the logger (pino)
+/**
+ * Application logger instance.
+ */
 const logger = pino({
   level: process.env.LOG_LEVEL || "info",
   formatters: {
@@ -22,7 +28,10 @@ const logger = pino({
   },
 });
 
-// Configure the rate limiter
+/**
+ * Rate limiter middleware configuration.
+ * Protects API endpoints from abuse.
+ */
 const limiter = rateLimit({
   windowMs: Config.RATE_LIMIT.WINDOW_MS,
   max: Config.RATE_LIMIT.MAX_REQUESTS,
@@ -32,24 +41,28 @@ const limiter = rateLimit({
   keyGenerator: (req) => req.headers["x-real-ip"] || req.ip,
 });
 
-// Apply the rate limiter to all requests
+// Apply middlewares
 app.use(limiter);
-
-// Middleware to add a unique request ID to each request
 app.use((req, res, next) => {
   req.requestId = uuidv4();
   next();
 });
-
-// Middleware to parse JSON request bodies
 app.use(express.json());
 
-// Function to validate the drawId format
+/**
+ * Validates the format of a lottery draw ID.
+ *
+ * @param {string} drawId - The draw ID to validate
+ * @returns {boolean} True if the draw ID is valid
+ */
 function isValidDrawId(drawId) {
   return /^\d{10}$/.test(drawId);
 }
 
-// Endpoint to get lottery state
+/**
+ * Endpoint to get the current lottery celebration state.
+ * GET /api/lottery/state
+ */
 app.get("/api/lottery/state", async (req, res) => {
   const requestId = req.requestId;
   try {
@@ -60,7 +73,10 @@ app.get("/api/lottery/state", async (req, res) => {
   }
 });
 
-// Endpoint to get lottery ticket info
+/**
+ * Endpoint to check specific lottery ticket information.
+ * GET /api/lottery/ticket
+ */
 app.get("/api/lottery/ticket", async (req, res) => {
   const { requestId, drawId } = _getRequestParams(req);
 
@@ -76,7 +92,11 @@ app.get("/api/lottery/ticket", async (req, res) => {
   }
 });
 
-// Endpoint to get draw results
+/**
+ * Endpoint to get lottery draw results.
+ * Implements caching and automatic fallback between realtime and final results.
+ * GET /api/lottery/results
+ */
 app.get("/api/lottery/results", async (req, res) => {
   const { requestId, drawId } = _getRequestParams(req);
 
@@ -84,27 +104,28 @@ app.get("/api/lottery/results", async (req, res) => {
     const { data, remainingTTL } = await getLotteryDataWithCache(
       "results",
       async () => {
-        // Fallback logic
         const { statusLNACcelebration } =
           await lotteryService.getCelebrationState(requestId);
-        if (statusLNACcelebration) {
-          return lotteryService.getRealtimeResults(requestId);
-        } else {
-          return lotteryService.getDrawResults(drawId, requestId);
-        }
+        return statusLNACcelebration
+          ? lotteryService.getRealtimeResults(requestId)
+          : lotteryService.getDrawResults(drawId, requestId);
       },
       requestId
     );
 
-    // set the cache expiration header
     res.setHeader("X-Cache-Expiration", remainingTTL.toString());
-
     return res.json(data);
   } catch (error) {
     _handleApiError(error, res, requestId, drawId);
   }
 });
 
+/**
+ * Extracts and normalizes request parameters.
+ *
+ * @param {Express.Request} req - The Express request object
+ * @returns {Object} Normalized request parameters
+ */
 function _getRequestParams(req) {
   return {
     requestId: req.requestId,
@@ -113,15 +134,30 @@ function _getRequestParams(req) {
   };
 }
 
+/**
+ * Processes an API request with validation and error handling.
+ *
+ * @param {Function} apiCall - The API function to call
+ * @param {string} requestId - Request identifier
+ * @param {string} drawId - Draw identifier
+ * @returns {Promise<*>} API response data
+ */
 async function _processApiRequest(apiCall, requestId, drawId) {
   if (!isValidDrawId(drawId)) {
     logger.warn({ requestId, drawId }, `Invalid drawId: ${drawId}`);
     throw new Error("Invalid drawId. It must be a 10-digit number.");
   }
-
   return await apiCall();
 }
 
+/**
+ * Handles API errors and sends appropriate responses.
+ *
+ * @param {Error} error - The error object
+ * @param {Express.Response} res - The Express response object
+ * @param {string} requestId - Request identifier
+ * @param {string} drawId - Draw identifier
+ */
 function _handleApiError(error, res, requestId, drawId) {
   logger.error(
     {
@@ -144,7 +180,10 @@ function _handleApiError(error, res, requestId, drawId) {
   res.status(500).json({ error: "Internal server error" });
 }
 
-// Endpoint to clear the cache
+/**
+ * Endpoint to manually clear the cache.
+ * GET /api/lottery/clearcache
+ */
 app.get("/api/lottery/clearcache", async (req, res) => {
   const requestId = req.requestId;
   logger.info({ requestId }, `Clearing cache`);

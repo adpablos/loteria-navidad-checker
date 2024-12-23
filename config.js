@@ -1,4 +1,17 @@
+/**
+ * Configuration class providing static access to all application settings.
+ * Supports environment variable overrides for flexible deployment.
+ */
 class Config {
+  /**
+   * API-related configuration including endpoints and request headers.
+   *
+   * @returns {Object} API configuration object
+   * @property {string} BASE_URL - Base URL for the lottery API
+   * @property {string} PROXY_URL - Railway proxy URL for API requests
+   * @property {Object} ENDPOINTS - Map of API endpoint paths
+   * @property {Object} HEADERS - HTTP headers for API requests
+   */
   static get API() {
     return {
       BASE_URL: process.env.API_BASE_URL || "https://www.loteriasyapuestas.es",
@@ -32,6 +45,13 @@ class Config {
     };
   }
 
+  /**
+   * Rate limiting configuration for API endpoints.
+   *
+   * @returns {Object} Rate limit settings
+   * @property {number} WINDOW_MS - Time window for rate limiting in milliseconds
+   * @property {number} MAX_REQUESTS - Maximum requests allowed per window
+   */
   static get RATE_LIMIT() {
     return {
       WINDOW_MS: 60 * 1000,
@@ -39,12 +59,25 @@ class Config {
     };
   }
 
+  /**
+   * Logging configuration.
+   *
+   * @returns {Object} Logging settings
+   * @property {string} LEVEL - Minimum log level to record
+   */
   static get LOG() {
     return {
       LEVEL: process.env.LOG_LEVEL || "info",
     };
   }
 
+  /**
+   * Default application settings.
+   *
+   * @returns {Object} Default settings
+   * @property {number} PORT - Server port number
+   * @property {string} DRAW_ID - Default lottery draw ID
+   */
   static get DEFAULT() {
     return {
       PORT: process.env.PORT || 3000,
