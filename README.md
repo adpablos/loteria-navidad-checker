@@ -25,7 +25,7 @@ Durante el desarrollo he trasteado con:
 
 ## 📦 Componentes
 
-### 1. API REST (`/api`)
+### 1. API REST (`/backend`)
 API Node.js que se encarga de consultar y cachear los resultados oficiales.
 [Ver documentación de la API](backend/README.md)
 
