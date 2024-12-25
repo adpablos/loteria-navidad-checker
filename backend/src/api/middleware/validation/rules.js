@@ -11,6 +11,15 @@ const rules = {
       .matches(/^\d{10}$/)
       .withMessage("Draw ID must contain only numbers"),
   ],
+  ticketNumber: [
+    param("ticketNumber")
+      .isString()
+      .trim()
+      .isLength({ min: 5, max: 5 })
+      .withMessage("Ticket number must be exactly 5 digits long")
+      .matches(/^\d{5}$/)
+      .withMessage("Ticket number must contain only digits"),
+  ],
 };
 
 module.exports = rules;

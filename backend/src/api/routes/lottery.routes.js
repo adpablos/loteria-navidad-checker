@@ -1,6 +1,9 @@
 const express = require("express");
 const LotteryController = require("../controllers/lottery.controller");
-const { validateDrawId } = require("../middleware/validation/validator");
+const {
+  validateDrawId,
+  validateTicketNumber,
+} = require("../middleware/validation/validator");
 
 /**
  * @openapi
@@ -8,6 +11,12 @@ const { validateDrawId } = require("../middleware/validation/validator");
  *   - name: Lottery
  *     description: Lottery draw operations
  */
+
+// Create router instance
+const router = express.Router();
+
+// Create controller instance
+const controller = new LotteryController();
 
 /**
  * @openapi
@@ -29,6 +38,13 @@ const { validateDrawId } = require("../middleware/validation/validator");
  *       500:
  *         $ref: '#/components/responses/InternalServerError'
  */
+router.get("/state", async (req, res, next) => {
+  try {
+    await controller.getCelebrationState(req, res);
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * @openapi
@@ -72,7 +88,7 @@ const { validateDrawId } = require("../middleware/validation/validator");
  *                     primerPremio:
  *                       type: object
  *                       properties:
- *                         decimo:
+ *                         ticketNumber:
  *                           type: string
  *                           example: "72480"
  *                         prize:
@@ -88,6 +104,13 @@ const { validateDrawId } = require("../middleware/validation/validator");
  *       500:
  *         $ref: '#/components/responses/InternalServerError'
  */
+router.get("/ticket/:drawId", validateDrawId(), async (req, res, next) => {
+  try {
+    await controller.getTicketInfo(req, res);
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * @openapi
@@ -125,6 +148,74 @@ const { validateDrawId } = require("../middleware/validation/validator");
  *       404:
  *         $ref: '#/components/responses/NotFoundError'
  */
+router.get("/results/:drawId", validateDrawId(), async (req, res, next) => {
+  try {
+    await controller.getResults(req, res);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * @openapi
+ * /lottery/check/{drawId}/{ticketNumber}:
+ *   get:
+ *     summary: Check if a specific ticket number has a prize in a given draw
+ *     tags: [Lottery]
+ *     parameters:
+ *       - in: path
+ *         name: drawId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: '^\d{10}$'
+ *         description: The lottery draw identifier
+ *       - in: path
+ *         name: ticketNumber
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: '^\d{5}$'
+ *         description: The 5-digit ticket number
+ *     responses:
+ *       200:
+ *         description: Returns whether the ticket is awarded or not
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ticketNumber:
+ *                   type: string
+ *                   example: "20884"
+ *                 isPremiado:
+ *                   type: boolean
+ *                 prizeEuros:
+ *                   type: number
+ *                 prizeType:
+ *                   type: string
+ *                   example: "R"
+ *                 message:
+ *                   type: string
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
+ *       404:
+ *         description: Not found
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
+ */
+router.get(
+  "/check/:drawId/:ticketNumber",
+  validateDrawId(),
+  validateTicketNumber(),
+  async (req, res, next) => {
+    try {
+      await controller.checkTicketNumber(req, res);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 /**
  * @openapi
@@ -148,38 +239,6 @@ const { validateDrawId } = require("../middleware/validation/validator");
  *       401:
  *         $ref: '#/components/responses/UnauthorizedError'
  */
-
-// Create router instance
-const router = express.Router();
-
-// Create controller instance
-const controller = new LotteryController();
-
-// Define routes
-router.get("/state", async (req, res, next) => {
-  try {
-    await controller.getCelebrationState(req, res);
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.get("/ticket/:drawId", validateDrawId(), async (req, res, next) => {
-  try {
-    await controller.getTicketInfo(req, res);
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.get("/results/:drawId", validateDrawId(), async (req, res, next) => {
-  try {
-    await controller.getResults(req, res);
-  } catch (error) {
-    next(error);
-  }
-});
-
 router.get("/clearcache", async (req, res, next) => {
   try {
     await controller.clearCache(req, res);

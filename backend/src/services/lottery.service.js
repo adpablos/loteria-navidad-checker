@@ -104,6 +104,99 @@ class LotteryApiService {
   }
 
   /**
+   * Checks if a given decimo has a prize in the specified draw.
+   *
+   * @param {string} drawId - The lottery draw identifier (10 digits)
+   * @param {string} ticketNumber - The ticket number (5 digits)
+   * @param {string} requestId - Unique identifier for this request
+   * @returns {Promise<Object>} An object describing the ticket result
+   */
+  async checkTicketNumber(drawId, ticketNumber, requestId) {
+    // 1. Fetch the raw data from the official endpoint
+    const rawData = await this.getTicketInfo(drawId, requestId);
+
+    // Safety check
+    if (!rawData || !Array.isArray(rawData.compruebe)) {
+      return {
+        data: {
+          decimo: ticketNumber,
+          isPremiado: false,
+          prizeEuros: 0,
+          prizeType: null,
+          message: "Data not found or invalid format",
+        },
+      };
+    }
+
+    // 2. Search for the ticket number
+    // Add leading zero to match the API format
+    const paddedTicketNumber = ticketNumber.padStart(6, "0");
+
+    LoggerUtil.debug(
+      {
+        requestId,
+        originalNumber: ticketNumber,
+        paddedNumber: paddedTicketNumber,
+        availableNumbers: rawData.compruebe
+          .map((item) => item.decimo)
+          .slice(0, 5), // Log first 5 numbers for debugging
+      },
+      "Checking ticket number"
+    );
+
+    const found = rawData.compruebe.find(
+      (item) => item.decimo === paddedTicketNumber
+    );
+
+    if (!found) {
+      // Not found -> no prize
+      return {
+        data: {
+          decimo: ticketNumber, // Return original format
+          isPremiado: false,
+          prizeEuros: 0,
+          prizeType: null,
+          message: "No prize",
+        },
+      };
+    }
+
+    // 3. Parse the prize (the official data uses a big integer like 40000000 => 400.000€)
+    //    Typically, item.prize = X means "X / 100" in euros (p.ej. 40000000 => 400000.00).
+    const euros = found.prize ? found.prize / 100 : 0;
+
+    let message = "";
+    switch ((found.prizeType || "").trim()) {
+      case "G":
+        message = "El Gordo!";
+        break;
+      case "Z":
+        message = "Segundo Premio";
+        break;
+      case "H":
+        message = "Premio Especial";
+        break;
+      case "R":
+        message = "Reintegro";
+        break;
+      default:
+        message = "Premio encontrado";
+        break;
+    }
+
+    // 4. Return a simplified object
+    return {
+      data: {
+        decimo: ticketNumber,
+        isPremiado: true,
+        prizeEuros: euros,
+        prizeType: found.prizeType?.trim() || null,
+        message,
+      },
+    };
+  }
+
+  /**
    * Makes an HTTP request to the lottery API with error handling and logging.
    *
    * @param {string} endpoint - The API endpoint to call
