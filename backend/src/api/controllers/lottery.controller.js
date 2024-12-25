@@ -23,6 +23,10 @@ class LotteryController {
       this.getResults.bind(this),
       "Get draw results"
     );
+    this.checkTicketNumber = withControllerLogging(
+      this.checkTicketNumber.bind(this),
+      "Check ticket number"
+    );
     this.clearCache = withControllerLogging(
       this.clearCache.bind(this),
       "Clear cache"
@@ -62,6 +66,22 @@ class LotteryController {
   async getResults(req, res) {
     const { drawId } = req.params;
     return this.lotteryService.getDrawResults(drawId, req.requestId);
+  }
+
+  /**
+   * Check if a specific ticket number has a prize for the given drawId.
+   *
+   * @param {express.Request} req - Express request object
+   * @param {express.Response} res - Express response object
+   * @returns {Promise<Object>} Result data to be sent in response
+   */
+  async checkTicketNumber(req, res) {
+    const { drawId, ticketNumber } = req.params;
+    return this.lotteryService.checkTicketNumber(
+      drawId,
+      ticketNumber,
+      req.requestId
+    );
   }
 
   /**
