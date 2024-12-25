@@ -57,8 +57,15 @@ const validateRequest = (req, res, next) => {
  */
 const validateDrawId = () => [...rules.drawId, validateRequest];
 
+/**
+ * Creates validation chain for ticketNumber parameter
+ * @returns {Array} Array of validation middleware
+ */
+const validateTicketNumber = () => [...rules.ticketNumber, validateRequest];
+
 // Export named functions directly
 module.exports = {
   validateRequest,
   validateDrawId,
+  validateTicketNumber,
 };
