@@ -91,8 +91,9 @@ class LotteryApiService {
    * @returns {Promise<{data: Object, remainingTTL: number}>} Draw results and cache TTL
    */
   async getDrawResults(drawId, requestId) {
+    const cacheKey = `draw-results-${drawId}`;
     return CacheUtil.getData(
-      `results-${drawId}`,
+      cacheKey,
       () =>
         this._makeApiCall(
           `${this.config.ENDPOINTS.DRAW_RESULTS}?idsorteo=${drawId}`,
@@ -112,8 +113,12 @@ class LotteryApiService {
    * @returns {Promise<Object>} An object describing the ticket result
    */
   async checkTicketNumber(drawId, ticketNumber, requestId) {
-    // 1. Fetch the raw data from the official endpoint
-    const rawData = await this.getTicketInfo(drawId, requestId);
+    // Use cache for ticket info
+    const { data: rawData } = await CacheUtil.getData(
+      `ticket-${drawId}`,
+      () => this.getTicketInfo(drawId, requestId),
+      requestId
+    );
 
     // Safety check
     if (!rawData || !Array.isArray(rawData.compruebe)) {

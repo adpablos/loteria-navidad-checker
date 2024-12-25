@@ -122,6 +122,9 @@ class CacheUtil {
     if (key === "results" && data.estadoCelebracionLNAC === true) {
       return 30; // Short TTL during active draw
     }
+    if (key.startsWith("ticket-")) {
+      return 300; // 5 minutes for ticket results
+    }
     return this._DEFAULT_TTL;
   }
 }
