@@ -40,7 +40,7 @@ const COLUMNS = {
 const API = {
     BASE_URL: "loteria-navidad-checker-production.up.railway.app",
     ENDPOINTS: {
-        TICKET: "/api/lottery/ticket",
+        CHECK_TICKET: "/api/lottery/check",
         RESULTS: "/api/lottery/results"
     }
 };
@@ -58,8 +58,17 @@ const DRAW_CONFIG = {
 /**
  * Add mock flag and mock responses
  */
-const MOCK_MODE = true; // Toggle this to enable/disable mock mode
+const MOCK_MODE = false; // Toggle this to enable/disable mock mode
 const MOCK_RESPONSES = {
+    check: {
+        data: {
+            decimo: "20884",
+            isPremiado: true,
+            prizeEuros: 60000,
+            prizeType: "G",
+            message: "El Gordo! [MOCK]"
+        }
+    },
     ticket: {
         "tipoSorteo": "X",
         "drawIdSorteo": "1258609100",
@@ -250,7 +259,7 @@ function fetchLotteryData(endpoint, drawId) {
   }
 
   const baseUrl = "https://loteria-navidad-checker-production.up.railway.app/api/lottery";
-  const url = `${baseUrl}/${endpoint}?drawId=${drawId}`;
+  const url = `${baseUrl}/${endpoint}/${drawId}`;
   
   try {
     const response = UrlFetchApp.fetch(url);
@@ -504,11 +513,52 @@ function getTicketData() {
 }
 
 /**
- * Updates ticket results using the ticket endpoint
+ * Checks if a given ticket has a prize using the /check endpoint
  */
-async function updateTicketResults(ticketData, sheet) {
+function checkTicketNumber(drawId, decimo) {
+    if (MOCK_MODE) {
+        Logger.log(`🧪 [MOCK] Checking ticket ${decimo}`);
+        return MOCK_RESPONSES.check.data;
+    }
+
+    const url = `https://${API.BASE_URL}${API.ENDPOINTS.CHECK_TICKET}/${drawId}/${decimo}`;
+    
+    try {
+        Logger.log(`🔍 Checking ticket ${decimo} at ${url}`);
+        const response = UrlFetchApp.fetch(url, { 
+            muteHttpExceptions: true,
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+
+        if (response.getResponseCode() !== 200) {
+            Logger.log(`❌ API error: ${response.getResponseCode()}`);
+            return null;
+        }
+
+        const result = JSON.parse(response.getContentText());
+        return result.data;
+    } catch (error) {
+        Logger.log(`❌ Error checking ticket: ${error}`);
+        return null;
+    }
+}
+
+/**
+ * Updates the ticket results using the ticket data and writes to the sheet.
+ * @param {object} ticketData - Lottery data (mock or real) containing decimo and prize info.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - Spreadsheet to write results to.
+ */
+function updateTicketResults(sheet) {
     Logger.log("\n🎟️ Starting ticket check process...");
     
+    // Get celebration state first
+    const celebrationState = getLotteryCelebrationState();
+    const isDrawFinished = celebrationState?.data?.estadoCelebracionLNAC === false;
+    
+    Logger.log(`🎯 Draw status: ${isDrawFinished ? 'Finished' : 'In progress'}`);
+
     const tableData = getTicketData();
     if (!tableData) {
         Logger.log("❌ Could not retrieve ticket data");
@@ -531,42 +581,57 @@ async function updateTicketResults(ticketData, sheet) {
         if (!number) continue;
         
         stats.checked++;
-        Logger.log(`🔍 Checking number ${number} (notification status: ${notified[i] ? "already notified" : "not notified"})`);
-        
-        const formattedNum = number.toString().padStart(5, '0');
         const wasNotified = notified[i] === "Yes";
-        
-        const award = findAward(ticketData, formattedNum);
+        const paddedNumber = number.toString().padStart(5, '0');
 
-        if (award) {
-            const share = shares[i];
-            const totalPrize = award.prize * share;
+        Logger.log(`🔍 Checking number ${paddedNumber} (notification status: ${wasNotified ? "notified" : "pending"})`);
+        
+        const result = checkTicketNumber(DRAW_CONFIG.ID, paddedNumber);
+
+        // Get the cell to update
+        const row = DRAW_CONFIG.AWARDS_START_ROW + i;
+        const prizeCell = sheet.getRange(row, COLUMNS.AWARD_PER_SHARE + 1);
+
+        if (result && result.isPremiado) {
+            const share = shares[i] || 1;
+            const totalPrize = result.prizeEuros * share;
             stats.winners++;
             stats.totalPrize += totalPrize;
-            
-            // Update spreadsheet cells
-            const row = DRAW_CONFIG.AWARDS_START_ROW + i;
-            sheet.getRange(row, COLUMNS.AWARD_PER_SHARE + 1).setValue(award.prize);
-            
-            if (award.prize > 0) {
-                if (!wasNotified) {
-                    Logger.log(`   💰 Winner! Prize: ${award.prize.toLocaleString()}€/ticket x ${share} tickets = ${totalPrize.toLocaleString()}€`);
-                    Logger.log(`   📧 Sending notification...`);
-                    notifyWinner(formattedNum, award.prize, share);
-                    stats.newNotifications++;
-                } else {
-                    Logger.log(`   💰 Winner! Prize: ${award.prize.toLocaleString()}€/ticket x ${share} tickets = ${totalPrize.toLocaleString()}€`);
-                    Logger.log(`   ℹ️ Notification already sent`);
-                    stats.previouslyNotified++;
-                }
+
+            // Update spreadsheet with prize
+            prizeCell.setValue(result.prizeEuros);
+
+            if (!wasNotified) {
+                Logger.log(`   💰 Winner! ${result.prizeEuros.toLocaleString()}€/decimo x ${share} tickets = ${totalPrize.toLocaleString()}€`);
+                Logger.log(`   📧 Sending notification...`);
+                notifyWinner(paddedNumber, result.prizeEuros, share);
+                stats.newNotifications++;
+            } else {
+                Logger.log(`   💰 Winner already notified. ${result.prizeEuros.toLocaleString()}€/decimo x ${share} tickets = ${totalPrize.toLocaleString()}€`);
+                stats.previouslyNotified++;
             }
         } else {
             Logger.log(`   ❌ No prize for this number`);
+            // If draw is finished, set 0, otherwise set "?"
+            if (isDrawFinished) {
+                Logger.log(`   📝 Setting value to 0 (draw is finished)`);
+                prizeCell.setValue(0);
+            } else {
+                Logger.log(`   📝 Setting value to ? (draw is in progress)`);
+                prizeCell.setValue("?");
+            }
         }
     }
 
-    // Final summary with better formatting
+    // Update status message with draw state
+    const statusMessage = isDrawFinished 
+        ? "Sorteo finalizado - Resultados definitivos" 
+        : "Sorteo en curso - Resultados provisionales";
+    updateStatus(true, false, statusMessage);
+
+    // Print summary
     Logger.log("\n📊 Final Summary:");
+    Logger.log(`   • Draw status: ${isDrawFinished ? 'Finished' : 'In progress'}`);
     Logger.log(`   • Numbers checked: ${stats.checked}`);
     Logger.log(`   • Winners found: ${stats.winners}`);
     Logger.log(`   • New notifications sent: ${stats.newNotifications}`);
@@ -645,14 +710,16 @@ function findRowByNumber(number) {
 /**
  * Updates the status message in the spreadsheet
  */
-function updateStatus(success = true, noData = false) {
+function updateStatus(success = true, noData = false, customMessage = null) {
     const sheet = getSpreadsheet();
     if (!sheet) return;
     
     const timestamp = new Date().toLocaleString("es-ES", {timeZone: "Europe/Madrid"});
     let message;
     
-    if (noData) {
+    if (customMessage) {
+        message = `${customMessage} - Última actualización: ${timestamp}`;
+    } else if (noData) {
         message = `Sorteo pendiente - El sorteo comenzará el 22 de diciembre a las 9:00h - Última comprobación: ${timestamp}`;
     } else {
         message = success 
@@ -719,7 +786,7 @@ async function updateLotteryInformation() {
 
         // Procesar tickets individuales
         Logger.log("\n2️⃣ Processing individual tickets...");
-        await updateTicketResults(data.ticketData, sheet);
+        await updateTicketResults(sheet);
 
         Logger.log("\n✅ Update process completed successfully");
         updateStatus(true);
@@ -998,5 +1065,52 @@ function stopAutoUpdate(showAlert = true) {
             'Se ha detenido el proceso de actualización automática.',
             SpreadsheetApp.getUi().ButtonSet.OK
         );
+    }
+}
+
+/**
+ * Gets the lottery celebration state
+ */
+function getLotteryCelebrationState() {
+    if (MOCK_MODE) {
+        return {
+            data: {
+                estadoCelebracionLNAC: false, // false means sorteo finished
+                message: "Sorteo finalizado [MOCK]"
+            }
+        };
+    }
+
+    const url = `https://${API.BASE_URL}/api/lottery/state`;
+    
+    try {
+        const response = UrlFetchApp.fetch(url, { 
+            muteHttpExceptions: true,
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+
+        if (response.getResponseCode() !== 200) {
+            Logger.log(`❌ Error getting celebration state: ${response.getResponseCode()}`);
+            // If we can't get the state, assume the draw is finished (safer option)
+            return { data: { estadoCelebracionLNAC: false } };
+        }
+
+        const result = JSON.parse(response.getContentText());
+        
+        // Check if result has the expected structure
+        if (!result || !result.data || typeof result.data.estadoCelebracionLNAC !== 'boolean') {
+            Logger.log(`⚠️ Unexpected API response format: ${JSON.stringify(result)}`);
+            // Default to finished state if format is unexpected
+            return { data: { estadoCelebracionLNAC: false } };
+        }
+
+        Logger.log(`🎯 Draw celebration state: ${result.data.estadoCelebracionLNAC ? "In progress" : "Finished"}`);
+        return result;
+    } catch (error) {
+        Logger.log(`❌ Error getting celebration state: ${error}`);
+        // If there's an error, assume the draw is finished (safer option)
+        return { data: { estadoCelebracionLNAC: false } };
     }
 }
